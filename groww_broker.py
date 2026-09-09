@@ -191,11 +191,12 @@ class GrowwBroker(BrokerClient):
                 trading_symbol=symbol
             )
             
-            # Handle None values gracefully
+            # Handle None values gracefully (depth itself may be None)
             ltp = response.get('last_price') or response.get('ltp') or 0.0
             volume = response.get('volume') or 0
-            bid = response.get('bid_price') or response.get('depth', {}).get('buy', [{}])[0].get('price', ltp)
-            ask = response.get('offer_price') or response.get('depth', {}).get('sell', [{}])[0].get('price', ltp)
+            depth = response.get('depth') or {}
+            bid = response.get('bid_price') or depth.get('buy', [{}])[0].get('price', ltp)
+            ask = response.get('offer_price') or depth.get('sell', [{}])[0].get('price', ltp)
             
             return Quote(
                 symbol=symbol,

@@ -392,38 +392,52 @@ class LiveTrader:
                 symbol = position.symbol
                 qty = position.qty
 
-                if symbol in prices:
-                    price = prices[symbol]
-
-                    # Execute sell
-                    result = self.paper_portfolio.execute_sell(symbol, qty, price)
-
-                    if result["success"]:
-                        log.info(
-                            f"CLOSED: {symbol} - Qty: {qty}, "
-                            f"Price: Rs.{result['price']:.2f}, "
-                            f"P&L: Rs.{result['net_pnl']:,.2f}"
+                price = prices.get(symbol)
+                if price is None:
+                    # LTP missing: fall back to the last 5m close so the
+                    # intraday-only invariant (never hold overnight) holds.
+                    log.error(f"LTP missing for {symbol}, trying last 5m close")
+                    try:
+                        df = self.broker.get_ohlcv(symbol, "5m", 5)
+                        price = float(df["close"].iloc[-1]) if len(df) else None
+                    except Exception as e:
+                        price = None
+                        log.error(f"Fallback price failed for {symbol}: {e}")
+                    if price is None:
+                        log.error(
+                            f"CRITICAL: could not close {symbol} x{qty} - left open overnight"
                         )
+                        continue
 
-                        # Log trade to database
-                        insert_trade(
-                            {
-                                "timestamp": datetime.now().isoformat(),
-                                "symbol": symbol,
-                                "side": "SELL",
-                                "qty": qty,
-                                "price": result["price"],
-                                "value": result["value"],
-                                "pnl": result["net_pnl"],
-                                "pnl_pct": result["pnl_pct"],
-                                "exit_reason": "FORCE_CLOSE_EOD",
-                            }
-                        )
+                # Execute sell
+                result = self.paper_portfolio.execute_sell(symbol, qty, price)
 
-                        # Update risk manager P&L
-                        self.risk_manager.update_daily_pnl(result["net_pnl"])
-                    else:
-                        log.error(f"Failed to close {symbol}: {result['error']}")
+                if result["success"]:
+                    log.info(
+                        f"CLOSED: {symbol} - Qty: {qty}, "
+                        f"Price: Rs.{result['price']:.2f}, "
+                        f"P&L: Rs.{result['net_pnl']:,.2f}"
+                    )
+
+                    # Log trade to database
+                    insert_trade(
+                        {
+                            "timestamp": datetime.now().isoformat(),
+                            "symbol": symbol,
+                            "side": "SELL",
+                            "qty": qty,
+                            "price": result["price"],
+                            "value": result["value"],
+                            "pnl": result["net_pnl"],
+                            "pnl_pct": result["pnl_pct"],
+                            "exit_reason": "FORCE_CLOSE_EOD",
+                        }
+                    )
+
+                    # Update risk manager P&L
+                    self.risk_manager.update_daily_pnl(result["net_pnl"])
+                else:
+                    log.error(f"Failed to close {symbol}: {result['error']}")
 
         except Exception as e:
             log.error(f"Error during force close: {e}")

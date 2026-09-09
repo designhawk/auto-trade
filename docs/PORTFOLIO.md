@@ -12,7 +12,7 @@
 
 ## Reload semantics (important)
 
-`load_positions_from_db` treats **any BUY symbol with no SELL row ever** as still open — using `AVG(price)` (ignores slippage/costs) and synthetic `SL = −2% / TP = +2%`, trailing on. Cash is recomputed as `initial − ΣBUY.value + ΣSELL.value`. Consequences: partial sells break the `NOT IN (SELL)` heuristic (symbol vanishes from portfolio while still held); costs tracked in-memory reset each restart. Restart mid-day only via the same DB.
+`load_positions_from_db` nets BUYs against SELLs per symbol (`net_qty > 0` stays open) at the buy-weighted average price (ignores slippage/costs), with synthetic `SL = −2% / TP = +2%`, trailing on — signal-level SL/TP can't be recovered (the trades table doesn't store them). Cash is recomputed as `initial − ΣBUY.value + ΣSELL.value`. Costs tracked in-memory reset each restart. Restart mid-day only via the same DB.
 
 ## Trailing stop (driven by trader, not portfolio)
 

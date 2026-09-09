@@ -43,6 +43,27 @@ def get_broker():
         _broker.connect()
     return _broker
 
+
+def _live_prices(symbols: list[str]) -> tuple[dict[str, float], bool]:
+    """
+    Best-effort live LTP lookup.
+
+    Returns (prices, live_flag). Falls back to ({}, False) when the broker
+    is unreachable (no creds, market closed, trader not running) so endpoints
+    stay usable with entry-price valuations. Callers MUST surface live_flag
+    as "live_prices" so clients know which they're seeing.
+    """
+    if not symbols:
+        return {}, False
+    try:
+        prices = get_broker().get_ltp(symbols)
+        # Live only if we got a price for EVERY requested symbol;
+        # otherwise callers fall back to entry prices per row.
+        live = bool(prices) and all(s in prices for s in symbols)
+        return (prices if live else {}), live
+    except Exception:
+        return {}, False
+
 app = FastAPI(
     title="Auto Trading API",
     description="REST API for auto trading system observability",
@@ -195,46 +216,53 @@ def get_trades(
 
 @app.get("/positions")
 def get_positions():
-    """Get current open positions (only executed trades)."""
+    """Get current open positions (today's trades netted; live prices when available)."""
     try:
         today = date.today().isoformat()
-        
+
         with get_db() as conn:
             cursor = conn.cursor()
-            
-            # Get unique symbols from TRADES (executed only), not signals
+
+            # Net today's BUYs against SELLs per symbol (partial sells OK)
             cursor.execute("""
-                SELECT symbol, side, price, qty, pnl, timestamp
-                FROM trades 
-                WHERE side = 'BUY' 
-                AND DATE(timestamp) = ?
-                ORDER BY timestamp DESC
+                SELECT symbol,
+                    SUM(CASE WHEN side = 'BUY' THEN qty ELSE -qty END) as net_qty,
+                    SUM(CASE WHEN side = 'BUY' THEN qty * price ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN side = 'BUY' THEN qty ELSE 0 END), 0) as avg_price,
+                    MAX(CASE WHEN side = 'BUY' THEN timestamp END) as last_buy_time
+                FROM trades
+                WHERE DATE(timestamp) = ?
+                GROUP BY symbol
+                HAVING net_qty > 0
+                ORDER BY last_buy_time DESC
             """, (today,))
-            
+
             rows = cursor.fetchall()
-            
-            seen = set()
+
+            symbols = [str(row[0]) for row in rows]
+            live_prices, live = _live_prices(symbols)
+
             positions = []
-            
+
             for row in rows:
-                symbol = row[0]
-                if symbol not in seen:
-                    seen.add(symbol)
-                    entry_price = float(row[2])
-                    qty = int(row[3])
-                    
-                    positions.append({
-                        "symbol": str(symbol),
-                        "side": str(row[1]),
-                        "entry_price": entry_price,
-                        "current_price": entry_price,
-                        "qty": qty,
-                        "value": entry_price * qty,
-                        "entry_time": str(row[5])
-                    })
-            
+                symbol = str(row[0])
+                qty = int(row[1])
+                entry_price = float(row[2])
+                current_price = live_prices.get(symbol, entry_price)
+
+                positions.append({
+                    "symbol": symbol,
+                    "side": "BUY",
+                    "entry_price": entry_price,
+                    "current_price": current_price,
+                    "qty": qty,
+                    "value": current_price * qty,
+                    "entry_time": str(row[3])
+                })
+
             return {
                 "count": len(positions),
+                "live_prices": live,
                 "positions": positions
             }
     except Exception as e:
@@ -262,28 +290,35 @@ def get_portfolio_summary():
         
         with get_db() as conn:
             cursor = conn.cursor()
-            # Get open positions from trades (BUY minus SELL)
+            # Net all BUYs against SELLs (partial sells reduce, not erase)
             cursor.execute("""
-                SELECT symbol, SUM(qty) as total_qty, AVG(price) as avg_price
-                FROM trades 
-                WHERE side = 'BUY'
+                SELECT symbol,
+                    SUM(CASE WHEN side = 'BUY' THEN qty ELSE -qty END) as net_qty,
+                    SUM(CASE WHEN side = 'BUY' THEN qty * price ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN side = 'BUY' THEN qty ELSE 0 END), 0) as avg_price
+                FROM trades
                 GROUP BY symbol
-                HAVING symbol NOT IN (
-                    SELECT symbol FROM trades WHERE side = 'SELL'
-                )
+                HAVING net_qty > 0
             """)
-            positions = cursor.fetchall()
-            
+            rows = cursor.fetchall()
+            open_positions = [
+                (str(r[0]), int(r[1]), float(r[2])) for r in rows
+            ]
+
             # Calculate cash from actual trades
             cursor.execute("SELECT SUM(value) FROM trades WHERE side = 'BUY'")
             buy_total = cursor.fetchone()[0] or 0
             cursor.execute("SELECT SUM(value) FROM trades WHERE side = 'SELL'")
             sell_total = cursor.fetchone()[0] or 0
             cash = start_capital - buy_total + sell_total
-        
-        # Calculate position value using current prices from entry
-        position_value = sum(p[1] * p[2] for p in positions) if positions else 0
-        num_positions = len(positions)
+
+        # Value positions at live prices when available, entry prices otherwise
+        live_prices, live = _live_prices([s for s, _, _ in open_positions])
+        position_value = sum(
+            qty * live_prices.get(symbol, avg_price)
+            for symbol, qty, avg_price in open_positions
+        ) if open_positions else 0
+        num_positions = len(open_positions)
         
         current_value = cash + position_value
         
@@ -298,6 +333,7 @@ def get_portfolio_summary():
             "current_value": current_value,
             "cash": cash,
             "position_value": position_value,
+            "live_prices": live,
             "num_positions": num_positions,
             "total_return_pct": (today_pnl / start_capital * 100) if start_capital else 0,
             "total_trades": len(today_trades),
@@ -372,6 +408,6 @@ def get_today_summary():
 
 if __name__ == "__main__":
     import uvicorn
-    print("Starting API server on http://localhost:8000")
-    print("Documentation: http://localhost:8000/docs")
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    print(f"Starting API server on http://localhost:{config.API_PORT}")
+    print(f"Documentation: http://localhost:{config.API_PORT}/docs")
+    uvicorn.run(app, host="0.0.0.0", port=config.API_PORT)

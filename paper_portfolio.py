@@ -101,14 +101,15 @@ class PaperPortfolio:
         with get_db() as conn:
             cursor = conn.cursor()
             
+            # Net BUYs against SELLs so partial sells reduce (not erase) the position
             cursor.execute("""
-                SELECT symbol, SUM(qty) as total_qty, AVG(price) as avg_price
-                FROM trades 
-                WHERE side = 'BUY'
+                SELECT symbol,
+                    SUM(CASE WHEN side = 'BUY' THEN qty ELSE -qty END) as net_qty,
+                    SUM(CASE WHEN side = 'BUY' THEN qty * price ELSE 0 END)
+                        / NULLIF(SUM(CASE WHEN side = 'BUY' THEN qty ELSE 0 END), 0) as avg_price
+                FROM trades
                 GROUP BY symbol
-                HAVING symbol NOT IN (
-                    SELECT symbol FROM trades WHERE side = 'SELL'
-                )
+                HAVING net_qty > 0
             """)
             
             rows = cursor.fetchall()
