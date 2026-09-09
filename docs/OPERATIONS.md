@@ -5,7 +5,7 @@
 `Launcher` spawns `api.py` → `logs/api.log` and `live_trader.py` → `logs/trader.log` (`CREATE_NEW_PROCESS_GROUP` on Windows).
 
 * `python run.py` — API, wait 2s, trader; block until `Ctrl+C` → terminate/kill.
-* `python run.py --trader-only` — skip API (note: inverted check — `--trader-only` actually *skips* the trader; default starts both).
+* `python run.py --trader-only` — trader only, skips the API.
 * `python run.py --monitor` — API + trader, then `monitor.py --follow` in foreground; stops both on exit.
 * `--stop/--status` — only affect the current `Launcher`'s dict (fresh each invocation, so effectively no-ops across runs). To stop, `Ctrl+C` the launcher or kill PIDs; to inspect, use `monitor.py` / `http://localhost:8002/status`.
 

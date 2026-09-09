@@ -108,12 +108,12 @@ def main():
         launcher.stop_all()
         return
     
-    # Default: start api + trader
-    launcher.start_api()
-    time.sleep(2)
-    
+    # Default: start api + trader; --trader-only skips the API
     if not args.trader_only:
-        launcher.start_trader()
+        launcher.start_api()
+        time.sleep(2)
+
+    launcher.start_trader()
     
     launcher.log("All systems started!")
     launcher.log("API: http://localhost:8002")

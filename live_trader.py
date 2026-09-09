@@ -69,7 +69,9 @@ class LiveTrader:
         self.is_live = is_live
         self.initial_capital = initial_capital
 
-        # Initialize components
+        # Initialize components (init_db first: fresh clones have no
+        # trading.db yet, and load_positions_from_db() below queries it)
+        init_db()
         self.risk_manager = RiskManager(
             initial_capital,
             max_position_pct=config.MAX_POSITION_PCT,
@@ -153,6 +155,19 @@ class LiveTrader:
 
                 current_price = df["close"].iloc[-1]
 
+                # Trailing stop: ratchet SL up once profit >= activation.
+                # Must run BEFORE the SL/TP checks (and without requiring
+                # price > take_profit) so gains are locked in on pullbacks.
+                if pos.trailing_stop and pos.avg_price > 0:
+                    profit_pct = (current_price - pos.avg_price) / pos.avg_price
+                    if profit_pct >= pos.trail_activation_pct:
+                        new_stop = current_price * (1 - pos.trail_distance_pct)
+                        if new_stop > pos.stop_loss:
+                            pos.stop_loss = new_stop
+                            log.info(
+                                f"TRAILING STOP UPDATED: {symbol} - New SL: {new_stop:.2f} ({profit_pct * 100:.1f}% profit)"
+                            )
+
                 stop_loss = pos.stop_loss
                 take_profit = pos.take_profit
 
@@ -212,17 +227,6 @@ class LiveTrader:
                             }
                         )
                     continue
-
-                # Check trailing stop (if activated)
-                if pos.trailing_stop and current_price > take_profit:
-                    profit_pct = (current_price - pos.avg_price) / pos.avg_price
-                    if profit_pct >= pos.trail_activation_pct:
-                        new_stop = current_price * (1 - pos.trail_distance_pct)
-                        if new_stop > pos.stop_loss:
-                            pos.stop_loss = new_stop
-                            log.info(
-                                f"TRAILING STOP UPDATED: {symbol} - New SL: {new_stop:.2f} ({profit_pct * 100:.1f}% profit)"
-                            )
 
             except Exception as e:
                 log.error(f"Error checking position {symbol}: {e}")

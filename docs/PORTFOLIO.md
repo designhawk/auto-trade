@@ -16,7 +16,7 @@
 
 ## Trailing stop (driven by trader, not portfolio)
 
-In `on_bar`, if `pos.trailing_stop and price > take_profit` and `(price−avg)/avg ≥ 2%`, SL ratchets to `price×(1−1.5%)`. Portfolio just stores the mutated SL.
+In `on_bar`, once `(price−avg)/avg ≥ trail_activation_pct` (2%), SL ratchets to `price×(1−trail_distance_pct)` (1.5%) whenever that exceeds the current SL — evaluated before the SL/TP checks each bar, so pullbacks after a run-up exit at the trailed stop. Portfolio just stores the mutated SL.
 
 ## Helpers
 

@@ -182,6 +182,12 @@ class PaperPortfolio:
             total_cost = (existing.avg_price * existing.qty) + (executed_price * qty)
             existing.qty = total_qty
             existing.avg_price = total_cost / total_qty
+            # Refresh protective levels to the latest signal's levels so the
+            # stop/target reflect current market structure, not the first fill
+            if stop_loss:
+                existing.stop_loss = stop_loss
+            if take_profit:
+                existing.take_profit = take_profit
         else:
             self.positions[symbol] = Position(
                 symbol=symbol,
