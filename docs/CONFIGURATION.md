@@ -28,4 +28,4 @@ Single source: `.env` → `Config` (`config.py`, `load_dotenv()`). No validation
 cp .env.example .env   # then fill uppercase GROWW_TOTP_TOKEN / GROWW_TOTP_SECRET
 ```
 
-Keep `.env` git-ignored (it is). `websockets`/`streamlit`/`schedule` are installed but unused by current code — safe to prune or leave.
+Keep `.env` git-ignored (it is).

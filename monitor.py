@@ -16,12 +16,27 @@ import time
 import requests
 import argparse
 from datetime import datetime
-from pathlib import Path
+
+from paths import LOG_DIR
 
 
 def clear_screen():
     """Clear terminal screen."""
     os.system('cls' if os.name == 'nt' else 'clear')
+
+
+def _candidate_logs():
+    """
+    All runnable log files, newest first.
+
+    Covers both launch modes: dated logger output (direct runs) and the
+    launcher's trader.log / api.log (run.py runs).
+    """
+    files = list(LOG_DIR.glob("live_trader_*.log"))
+    files += [LOG_DIR / "trader.log", LOG_DIR / "api.log"]
+    files = [f for f in files if f.exists()]
+    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+    return files
 
 
 def get_status():
@@ -53,8 +68,8 @@ def get_status():
 
 
 def get_recent_logs(lines=15):
-    """Get recent log lines."""
-    log_files = sorted(Path("logs").glob("live_trader_*.log"), reverse=True)
+    """Get recent log lines from the freshest log file."""
+    log_files = _candidate_logs()
     if not log_files:
         return []
     
@@ -90,8 +105,8 @@ def print_status(status, logs):
 
 
 def follow_logs():
-    """Follow logs in real-time."""
-    log_files = sorted(Path("logs").glob("live_trader_*.log"), reverse=True)
+    """Follow the freshest log in real-time."""
+    log_files = _candidate_logs()
     if not log_files:
         print("No log files found")
         return

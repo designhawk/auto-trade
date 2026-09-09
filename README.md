@@ -103,6 +103,7 @@ api.py                FastAPI read-only API (:8002)
 monitor.py            Terminal dashboard (polls API + tails logs)
 logs.py / logger.py   Log viewer / get_logger(name) + TradeLogger
 config.py             Central config + NSE_STOCKS universe
+paths.py              Project-root paths (DB / logs / backups)
 ```
 
 ## API (read-only)

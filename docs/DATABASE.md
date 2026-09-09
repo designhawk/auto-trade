@@ -15,5 +15,6 @@
 ## Notes
 
 * DB file + `backups/` are git-ignored; `trading.db` ships absent — first run creates it.
+* Paths are anchored to the project root (`paths.DB_PATH`, `paths.BACKUP_DIR`), not the cwd — launching from any directory uses the same database and backup folder.
 * API/monitor are read-only consumers; no migrations — schema changes need manual `DROP`/recreate.
 * Session win/loss counting in `end_session` pairs sells to buys by symbol (approximate, not FIFO-matched).

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 from contextlib import contextmanager
 
-DB_PATH = Path("trading.db")
+from paths import DB_PATH, BACKUP_DIR
 
 
 def get_connection() -> sqlite3.Connection:
@@ -266,7 +266,7 @@ def get_all_sessions() -> list[dict]:
         return [dict(row) for row in rows]
 
 
-def backup_db(backup_dir: str = "backups") -> str:
+def backup_db(backup_dir: str = str(BACKUP_DIR)) -> str:
     """
     Create a timestamped backup of the database.
     
@@ -315,7 +315,7 @@ def restore_db(backup_path: str) -> bool:
     return True
 
 
-def get_backup_list(backup_dir: str = "backups") -> list:
+def get_backup_list(backup_dir: str = str(BACKUP_DIR)) -> list:
     """Get list of available backups."""
     backup_path = Path(backup_dir)
     if not backup_path.exists():

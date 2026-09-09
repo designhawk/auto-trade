@@ -15,7 +15,7 @@
 
 ## Monitor — `monitor.py`
 
-Polls `localhost:8002/health` + `/portfolio` and tails `logs/live_trader_*.log` (note: `logger.py` writes that pattern; `run.py` writes `logs/trader.log` — monitor only sees logger output). Modes: default refresh `-i 5`s, `--once`, `--follow` (raw tail).
+Polls `localhost:8002/health` + `/portfolio` and tails the most recently modified of `logs/live_trader_*.log`, `logs/trader.log`, `logs/api.log` — covering both launcher runs and direct runs. Modes: default refresh `-i 5`s, `--once`, `--follow` (raw tail).
 
 ## Logs — `logger.py` + `logs.py`
 

@@ -14,15 +14,16 @@ import os
 import sys
 import subprocess
 import time
-from pathlib import Path
+
+from paths import LOG_DIR
 
 
 class Launcher:
     """Manages all trading system processes."""
-    
+
     def __init__(self):
         self.processes = {}
-        self.log_dir = Path("logs")
+        self.log_dir = LOG_DIR
         self.log_dir.mkdir(exist_ok=True)
     
     def log(self, msg):

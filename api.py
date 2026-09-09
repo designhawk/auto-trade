@@ -27,9 +27,8 @@ from typing import List, Optional
 import sqlite3
 from contextlib import contextmanager
 import json
-from pathlib import Path
 
-from db import get_db, get_trades_for_date, get_signals_for_date, get_all_sessions
+from db import get_db, get_trades_for_date, get_signals_for_date, get_all_sessions, DB_PATH
 from config import config
 
 # Broker for live prices
@@ -94,9 +93,8 @@ def health_check():
 def get_status():
     """Get current trading system status."""
     try:
-        # Check if database exists
-        db_path = Path("trading.db")
-        db_exists = db_path.exists()
+        # Check if database exists (anchored to project root, not cwd)
+        db_exists = DB_PATH.exists()
         
         # Get latest session info
         sessions = get_all_sessions()

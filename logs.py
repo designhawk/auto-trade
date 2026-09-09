@@ -10,8 +10,9 @@ Usage:
 
 import argparse
 import sys
-from pathlib import Path
 from datetime import datetime
+
+from paths import LOG_DIR
 
 
 def tail_file(filepath, lines=50, follow=False):
@@ -46,7 +47,7 @@ def main():
     
     args = parser.parse_args()
     
-    log_dir = Path("logs")
+    log_dir = LOG_DIR
     
     if args.clear:
         for log_file in log_dir.glob("*.log"):

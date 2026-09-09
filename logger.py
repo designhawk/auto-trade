@@ -13,11 +13,11 @@ Usage:
 
 import logging
 import sys
-from pathlib import Path
 from datetime import datetime
 
+from paths import LOG_DIR
+
 # Create logs directory
-LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
 
 
