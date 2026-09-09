@@ -1,6 +1,10 @@
 .env
 venv/
+.venv/
 __pycache__/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
 *.pyc
 *.pyo
 *.pyd
@@ -11,11 +15,14 @@ dist/
 build/
 *.log
 *.parquet
+*.db
+*.sqlite
+*.sqlite3
 trading.db
 backups/
 *.db-journal
 sessions/*.json
-logs/*.log
+logs/
 .DS_Store
 node_modules/
 frontend/dist/
