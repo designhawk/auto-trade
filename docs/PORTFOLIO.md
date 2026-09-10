@@ -36,4 +36,4 @@ Why beginners should love these: if your winners often touch 3R but you sell at 
 
 ## One quirk to know
 
-If you restart the bot mid-day, it rebuilds open positions from its diary — but fine details (like "already took half-profit") are reset to safe defaults. Prefer starting it once in the morning and leaving it alone.
+If you restart the bot mid-day, it rebuilds open positions and cash from its diary — exact to the paisa, costs included — but fine details (like "already took half-profit") are reset to safe defaults. Prefer starting it once in the morning and leaving it alone.
