@@ -3,8 +3,11 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-# growwapi is only needed at broker-connect time; stub for unit tests
-sys.modules.setdefault("growwapi", MagicMock())
+# growwapi is only needed at broker-connect time; stub it when not installed
+try:
+    import growwapi  # noqa: F401
+except ImportError:
+    sys.modules.setdefault("growwapi", MagicMock())
 
 import pytest  # noqa: E402
 

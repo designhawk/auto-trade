@@ -57,6 +57,50 @@ except ImportError:
 load_dotenv()
 
 
+def candles_to_df(candles: list) -> pd.DataFrame:
+    """
+    Convert raw candle rows to an IST-indexed OHLCV DataFrame.
+
+    Handles both API formats:
+    - New (get_historical_candles): [iso_timestamp, o, h, l, c, vol, oi?]
+    - Legacy (get_historical_candle_data): [epoch_seconds, o, h, l, c, vol]
+    """
+    if not candles:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+
+    rows = [list(c)[:6] for c in candles]  # drop OI column when present
+    df = pd.DataFrame(
+        rows, columns=["timestamp", "open", "high", "low", "close", "volume"]
+    )
+
+    first = df["timestamp"].iloc[0]
+    if isinstance(first, str):
+        ts = pd.to_datetime(df["timestamp"])
+        if ts.dt.tz is None:
+            ts = ts.dt.tz_localize("Asia/Kolkata")  # API returns IST wall time
+        else:
+            ts = ts.dt.tz_convert("Asia/Kolkata")
+        df["timestamp"] = ts
+    else:
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"], unit="s", utc=True
+        ).dt.tz_convert("Asia/Kolkata")
+
+    df.set_index("timestamp", inplace=True)
+    return df[["open", "high", "low", "close", "volume"]]
+
+
+def _depth_price(depth: dict, side: str, fallback: float) -> float:
+    """First book price for a side, resilient to missing/empty depth."""
+    try:
+        levels = (depth or {}).get(side) or []
+        if levels and levels[0].get("price") is not None:
+            return float(levels[0]["price"])
+    except (AttributeError, TypeError, ValueError):
+        pass
+    return float(fallback) if fallback else 0.0
+
+
 class GrowwBroker(BrokerClient):
     """
     Groww implementation of BrokerClient for paper trading.
@@ -191,12 +235,13 @@ class GrowwBroker(BrokerClient):
                 trading_symbol=symbol
             )
             
-            # Handle None values gracefully (depth itself may be None)
-            ltp = response.get('last_price') or response.get('ltp') or 0.0
+            # Handle None values gracefully (quote payload has no 'ltp'
+            # key; depth sides may be missing or empty lists)
+            ltp = response.get('last_price') or 0.0
             volume = response.get('volume') or 0
-            depth = response.get('depth') or {}
-            bid = response.get('bid_price') or depth.get('buy', [{}])[0].get('price', ltp)
-            ask = response.get('offer_price') or depth.get('sell', [{}])[0].get('price', ltp)
+            depth = response.get('depth')
+            bid = response.get('bid_price') or _depth_price(depth, 'buy', ltp)
+            ask = response.get('offer_price') or _depth_price(depth, 'sell', ltp)
             
             return Quote(
                 symbol=symbol,
@@ -231,26 +276,27 @@ class GrowwBroker(BrokerClient):
             raise RuntimeError("Not connected. Call connect() first.")
         
         try:
-            # Map interval string to minutes (integer)
+            # Map our interval strings to SDK candle-interval constants
+            # (get_historical_candles; get_historical_candle_data is deprecated)
             interval_map = {
-                "1m": 1,
-                "2m": 2,
-                "3m": 3,
-                "5m": 5,
-                "10m": 10,
-                "15m": 15,
-                "30m": 30,
-                "1h": 60,
-                "4h": 240,
-                "1d": 1440,
-                "1w": 10080,
-                "1mo": 43200,
+                "1m": "CANDLE_INTERVAL_MIN_1",
+                "2m": "CANDLE_INTERVAL_MIN_2",
+                "3m": "CANDLE_INTERVAL_MIN_3",
+                "5m": "CANDLE_INTERVAL_MIN_5",
+                "10m": "CANDLE_INTERVAL_MIN_10",
+                "15m": "CANDLE_INTERVAL_MIN_15",
+                "30m": "CANDLE_INTERVAL_MIN_30",
+                "1h": "CANDLE_INTERVAL_HOUR_1",
+                "4h": "CANDLE_INTERVAL_HOUR_4",
+                "1d": "CANDLE_INTERVAL_DAY",
+                "1w": "CANDLE_INTERVAL_WEEK",
+                "1mo": "CANDLE_INTERVAL_MONTH",
             }
-            
+
             if interval not in interval_map:
                 raise ValueError(f"Invalid interval: {interval}. Use: {list(interval_map.keys())}")
-            
-            groww_interval = interval_map[interval]
+
+            candle_interval = getattr(GrowwAPI, interval_map[interval])
             
             # Calculate time range based on interval and bars
             IST = pytz.timezone("Asia/Kolkata")
@@ -281,33 +327,23 @@ class GrowwBroker(BrokerClient):
                 else:
                     start_time = end_time - pd.Timedelta(days=bars)
             
-            # Fetch historical data
-            response = self._client.get_historical_candle_data(
-                trading_symbol=symbol,
+            # Fetch historical data (groww_symbol format: "NSE-RELIANCE")
+            response = self._client.get_historical_candles(
                 exchange=self._client.EXCHANGE_NSE,
                 segment=self._client.SEGMENT_CASH,
+                groww_symbol=f"NSE-{symbol}",
                 start_time=start_time.strftime("%Y-%m-%d %H:%M:%S"),
                 end_time=end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                interval_in_minutes=groww_interval
+                candle_interval=candle_interval
             )
-            
-            # Convert to DataFrame
+
+            # Convert to DataFrame (handles new ISO rows and legacy epoch rows)
             candles = response['candles']
-            
+
             # Take only the requested number of bars
             candles = candles[-bars:] if len(candles) > bars else candles
-            
-            df = pd.DataFrame(
-                candles,
-                columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
-            )
-            
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
-            df['timestamp'] = df['timestamp'].dt.tz_convert('Asia/Kolkata')
-            df.set_index('timestamp', inplace=True)
-            df = df[['open', 'high', 'low', 'close', 'volume']]
-            
-            return df
+
+            return candles_to_df(candles)
             
         except Exception as e:
             raise RuntimeError(f"Failed to get OHLCV for {symbol}: {e}")
@@ -329,8 +365,8 @@ class GrowwBroker(BrokerClient):
             
             # Filter only positions with non-zero quantity
             positions = [
-                pos for pos in response['positions']
-                if pos['quantity'] != 0
+                pos for pos in response.get('positions', [])
+                if pos.get('quantity', 0) != 0
             ]
             
             return positions
@@ -350,7 +386,7 @@ class GrowwBroker(BrokerClient):
         
         try:
             response = self._client.get_holdings_for_user(timeout=5)
-            return response['holdings']
+            return response.get('holdings', [])
         except Exception as e:
             raise RuntimeError(f"Failed to get holdings: {e}")
 
@@ -368,19 +404,22 @@ class GrowwBroker(BrokerClient):
             raise RuntimeError("Not connected. Call connect() first.")
         
         try:
-            # Format symbols for API
-            symbol_strings = [f"NSE_{s}" for s in symbols]
-            
-            response = self._client.get_ltp(
-                segment=self._client.SEGMENT_CASH,
-                exchange_trading_symbols=tuple(symbol_strings)
-            )
-            
-            # Convert keys back to simple symbols
-            return {
-                k.replace("NSE_", ""): float(v)
-                for k, v in response.items()
-            }
+            # API caps at 50 symbols per call - chunk larger universes
+            prices: dict[str, float] = {}
+            symbols = list(symbols)
+            for i in range(0, len(symbols), 50):
+                chunk = [f"NSE_{s}" for s in symbols[i:i + 50]]
+                response = self._client.get_ltp(
+                    segment=self._client.SEGMENT_CASH,
+                    exchange_trading_symbols=tuple(chunk)
+                )
+                # Convert keys back to simple symbols
+                for k, v in (response or {}).items():
+                    try:
+                        prices[k.replace("NSE_", "")] = float(v)
+                    except (TypeError, ValueError):
+                        continue
+            return prices
             
         except Exception as e:
             raise RuntimeError(f"Failed to get LTP: {e}")
