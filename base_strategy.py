@@ -50,15 +50,23 @@ class BaseStrategy(ABC):
         ...
 
     @abstractmethod
-    def generate_signals(self, symbol: str, df: pd.DataFrame) -> list[Signal]:
+    def generate_signals(
+        self,
+        symbol: str,
+        df: pd.DataFrame,
+        df_15m: Optional[pd.DataFrame] = None,
+    ) -> list[Signal]:
         """
         Given an OHLCV DataFrame, return a list of Signals.
-        
+
         Args:
             symbol: Trading symbol
-            df: OHLCV DataFrame with columns [open, high, low, close, volume]
+            df: Primary OHLCV DataFrame with columns [open, high, low, close, volume]
                 Index should be DatetimeIndex in IST timezone
-                
+            df_15m: Optional higher-timeframe OHLCV for trend alignment.
+                Strategies that use it must fail-open (treat as pass) when
+                it is None or too short.
+
         Returns:
             List of Signal objects. Returns empty list if no action should be taken.
         """

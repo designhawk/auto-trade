@@ -15,6 +15,7 @@ Exit conditions:
 
 import pandas as pd
 import numpy as np
+from typing import Optional
 from base_strategy import BaseStrategy, Signal
 
 
@@ -37,6 +38,8 @@ class IntradayMomentumStrategy(BaseStrategy):
         max_stop_loss_pct: float = 0.025,
         cooldown_bars: int = 10,
         trend_lookback: int = 20,  # Lowered from 50 for intraday (50 EMA on 5m = 4hrs)
+        trend_ema: int = 20,  # 15m trend filter span
+        vwap_required: bool = True,  # require close above session VWAP
     ):
         self.lookback = lookback
         self.volume_multiplier = volume_multiplier
@@ -44,6 +47,8 @@ class IntradayMomentumStrategy(BaseStrategy):
         self.max_stop_loss_pct = max_stop_loss_pct
         self.cooldown_bars = cooldown_bars
         self.trend_lookback = trend_lookback
+        self.trend_ema = trend_ema
+        self.vwap_required = vwap_required
         self.last_signal_bar = {}
 
     @property
@@ -70,13 +75,34 @@ class IntradayMomentumStrategy(BaseStrategy):
 
         return atr
 
-    def generate_signals(self, symbol: str, df: pd.DataFrame) -> list[Signal]:
+    @staticmethod
+    def session_vwap(df: pd.DataFrame) -> Optional[float]:
+        """Session VWAP from the last bar's trading session. None if unusable."""
+        try:
+            session = df[df.index.date == df.index[-1].date()]
+            if len(session) < 2:
+                return None
+            tp = (session["high"] + session["low"] + session["close"]) / 3
+            vol = session["volume"].sum()
+            if vol <= 0:
+                return None
+            return float((tp * session["volume"]).sum() / vol)
+        except Exception:
+            return None
+
+    def generate_signals(
+        self,
+        symbol: str,
+        df: pd.DataFrame,
+        df_15m: Optional[pd.DataFrame] = None,
+    ) -> list[Signal]:
         """
         Generate trading signals based on momentum breakout.
 
         Args:
             symbol: Trading symbol
-            df: OHLCV DataFrame with at least required_bars() rows
+            df: 5m OHLCV DataFrame with at least required_bars() rows
+            df_15m: Optional 15m OHLCV for trend alignment (fail-open)
 
         Returns:
             List of Signal objects (empty if no signal)
@@ -99,6 +125,18 @@ class IntradayMomentumStrategy(BaseStrategy):
         # Get the latest candle
         latest = df.iloc[-1]
         current_price = latest["close"]
+
+        # Gate A: 15m trend alignment (fail-open when data missing)
+        if df_15m is not None and len(df_15m) >= self.trend_ema + 5:
+            ema15 = df_15m["close"].ewm(span=self.trend_ema, adjust=False).mean().iloc[-1]
+            if df_15m["close"].iloc[-1] <= ema15:
+                return []
+
+        # Gate B: session VWAP (longs only above fair value)
+        if self.vwap_required:
+            vwap = self.session_vwap(df)
+            if vwap is not None and current_price <= vwap:
+                return []
 
         # Calculate indicators
         # 1. 20-period rolling high
@@ -197,6 +235,7 @@ class IntradayMomentumStrategy(BaseStrategy):
                     f"Risk: ₹{risk:.2f} ({risk_pct * 100:.1f}%), "
                     f"Reward: ₹{take_profit - current_price:.2f}"
                 ),
+                volatility_pct=round(atr / current_price * 100, 2) if current_price > 0 else None,
             )
 
             signals.append(signal)

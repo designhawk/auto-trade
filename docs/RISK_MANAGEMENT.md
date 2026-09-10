@@ -10,10 +10,12 @@
 4. **Duplicate symbol:** already holding `signal.symbol`.
 5. **Cash reserve:** `available_cash < MIN_CASH_RESERVE` (₹2L).
 6. **Risk-reward:** `(TP−entry)/(entry−SL) >= MIN_RISK_REWARD` (2.0). Long-assumed; `risk ≤ 0` rejected.
-7. **Volatility (if provided):** `0.3% ≤ volatility_pct ≤ 4.0%`. Note: `IntradayMomentumStrategy` never sets `volatility_pct`, so this gate is currently inert.
-8. **Sizing + affordability:** risk 2% of current capital per trade → `qty = min(⌊0.02×capital / (entry−SL)⌋, ⌊capital×MAX_POSITION_PCT/entry⌋)`; then capped to affordable `⌊cash/entry⌋`. `qty < 1` rejected.
+7. **Volatility:** `0.3% ≤ volatility_pct ≤ 4.0%` — now live, the strategy sets `volatility_pct` (ATR%) on every signal.
+8. **Portfolio heat:** Σ `(avg−SL)×qty` over open positions `>= HEAT_CAP_PCT × capital` (6%) rejects. Needs `avg_price`/`stop_loss` per position (provided by `live_trader`).
+9. **Sizing:** base 2% of capital at risk, scaled by volatility targeting (`TARGET_VOL_PCT / signal_vol`, clamped 0.5–1.5×), halved past the soft-throttle line (`THROTTLE_START_MULT × daily limit`, default half of 3%), scaled by confidence (`0.5 + 0.5×confidence`), capped at `MAX_POSITION_PCT` value and affordable cash. `qty < 1` rejected.
+10. **Affordability:** position cost capped to `⌊cash/entry⌋`.
 
-Approval reason looks like `"Approved: R:R 2.0, Qty 42"`.
+Approval reason looks like `"Approved: R:R 2.0, Qty 42"` (+ `" (throttled)"` when halved).
 
 ## State tracking
 

@@ -79,6 +79,14 @@ def init_db():
                 session_id TEXT
             )
         """)
+
+        # Migrate older databases: MFE/MAE + cost breakdown columns
+        existing_cols = {
+            row[1] for row in cursor.execute("PRAGMA table_info(trades)").fetchall()
+        }
+        for col in ("mfe", "mae", "brokerage", "stt", "other_costs", "slippage_cost"):
+            if col not in existing_cols:
+                cursor.execute(f"ALTER TABLE trades ADD COLUMN {col} REAL")
         
         # Sessions table - daily summary
         cursor.execute("""
@@ -142,8 +150,9 @@ def insert_trade(trade_data: dict):
         cursor.execute("""
             INSERT INTO trades (
                 timestamp, symbol, side, qty, price, value,
-                pnl, pnl_pct, exit_reason, session_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                pnl, pnl_pct, exit_reason, session_id,
+                mfe, mae, brokerage, stt, other_costs, slippage_cost
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             trade_data.get('timestamp', datetime.now().isoformat()),
             trade_data.get('symbol'),
@@ -154,7 +163,13 @@ def insert_trade(trade_data: dict):
             trade_data.get('pnl'),
             trade_data.get('pnl_pct'),
             trade_data.get('exit_reason'),
-            trade_data.get('session_id')
+            trade_data.get('session_id'),
+            trade_data.get('mfe'),
+            trade_data.get('mae'),
+            trade_data.get('brokerage'),
+            trade_data.get('stt'),
+            trade_data.get('other_costs'),
+            trade_data.get('slippage_cost')
         ))
         conn.commit()
 

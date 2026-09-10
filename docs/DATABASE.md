@@ -5,7 +5,7 @@
 ## Schema
 
 * **`signals`** — every strategy firing: `timestamp, symbol, action, confidence, entry_price, stop_loss, take_profit, reason, approved, rejection_reason, adjusted_qty, strategy`. Indexes on `(symbol)`, `(timestamp)`.
-* **`trades`** — paper executions: `timestamp, symbol, side(BUY/SELL), qty, price, value, pnl, pnl_pct, exit_reason, session_id`. Exit reasons: `SIGNAL_ENTRY, STOP_LOSS, TAKE_PROFIT, FORCE_CLOSE_EOD`. Indexes on `(symbol)`, `(timestamp)`.
+* **`trades`** — paper executions: `timestamp, symbol, side(BUY/SELL), qty, price, value, pnl, pnl_pct, exit_reason, session_id`, plus `mfe, mae` (R multiples at exit) and cost breakdown `brokerage, stt, other_costs, slippage_cost`. Exit reasons: `SIGNAL_ENTRY, STOP_LOSS, TAKE_PROFIT, SCALED_1R, SCRATCH, EOD_SCALE, FORCE_CLOSE_EOD`. Indexes on `(symbol)`, `(timestamp)`. New columns are added by `init_db()` migration (`PRAGMA table_info` guard), so old databases upgrade in place and legacy-shaped inserts still work.
 * **`sessions`** — one row per date (`UNIQUE(date)`): `start/end_capital, total_pnl, total_trades, winning_trades, losing_trades, max_drawdown_pct, sharpe_ratio, notes`. `insert_session` upserts on `date`. `max_drawdown/sharpe` are currently written as `0.0` (placeholders).
 
 ## Helpers

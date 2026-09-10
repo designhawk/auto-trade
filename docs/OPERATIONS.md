@@ -11,7 +11,9 @@
 
 ## Trading loop — `live_trader.py`
 
-`python live_trader.py [--live] [--capital N]`. `--live` prompts `CONFIRM` but execution stays paper (broker is read-only). Flow: `init_db → broker.connect (exit 1 on fail) → insert opening session row → pre_market → 5-min loop while IST < 15:25 → force_close_all → end_session → disconnect`. `KeyboardInterrupt`/exception also force-closes first.
+`python live_trader.py [--live] [--capital N]`. `--live` prompts `CONFIRM` but execution stays paper (broker is read-only). Flow: `init_db → broker.connect (exit 1 on fail) → insert opening session row → pre_market → 5-min loop while IST < 15:25 (with re-ranks at RESELECT_TIMES) → force_close_all → end_session → disconnect`. `KeyboardInterrupt`/exception also force-closes first.
+
+Session timeline (IST): 9:00 pre-market rank → 9:15 open → 9:30/11:00 re-ranks → 14:30 trail tightening + force-scale ≥1R → 14:45 entry cutoff → 15:00 staged wind-down (½ qty/tick) → 15:20 square-off → 15:25 force-close backstop. `python report.py [--date YYYY-MM-DD]` prints the post-session review (P&L by exit, expectancy, MFE/MAE, costs, sectors, signals).
 
 ## Monitor — `monitor.py`
 

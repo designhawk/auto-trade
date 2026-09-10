@@ -49,6 +49,9 @@ class RiskManager:
         max_drawdown_pct: float = 0.10,  # 10% circuit breaker
         min_risk_reward: float = 2.0,
         min_cash_reserve: float = 100000,  # ₹1L minimum cash
+        heat_cap_pct: float = 0.06,  # max total open risk (adverse excursion)
+        target_vol_pct: float = 1.5,  # volatility-targeting anchor (ATR%)
+        throttle_start_mult: float = 0.5,  # halve size past this x daily limit
     ):
         """
         Initialize risk manager.
@@ -61,6 +64,9 @@ class RiskManager:
             max_drawdown_pct: Circuit breaker drawdown % (from all-time peak)
             min_risk_reward: Minimum risk-reward ratio required
             min_cash_reserve: Minimum cash to keep in reserve
+            heat_cap_pct: Max total open risk across positions (% of capital)
+            target_vol_pct: Anchor ATR% for volatility targeting
+            throttle_start_mult: Fraction of daily limit where sizing halves
         """
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
@@ -70,6 +76,9 @@ class RiskManager:
         self.max_drawdown_pct = max_drawdown_pct
         self.min_risk_reward = min_risk_reward
         self.min_cash_reserve = min_cash_reserve
+        self.heat_cap_pct = heat_cap_pct
+        self.target_vol_pct = target_vol_pct
+        self.throttle_start_mult = throttle_start_mult
 
         # Track daily P&L
         self.daily_pnl: dict[date, float] = {}
@@ -188,9 +197,34 @@ class RiskManager:
                     reason=f"Volatility too low: {signal.volatility_pct:.1f}% < 0.3%",
                 )
 
-        # Check 8: Position sizing - risk-based sizing
-        # Risk 2% of current capital per trade
+        # Check 8: Portfolio heat cap (total open risk across positions)
+        # Needs avg_price/stop_loss in current_positions (live_trader provides them)
+        open_risk = 0.0
+        for pos in current_positions:
+            avg = pos.get("avg_price", 0) or 0
+            sl = pos.get("stop_loss", 0) or 0
+            open_risk += max(0.0, avg - sl) * pos.get("qty", 0)
+        heat_cap = self.current_capital * self.heat_cap_pct
+        if open_risk >= heat_cap:
+            return RiskDecision(
+                approved=False,
+                adjusted_qty=0,
+                reason=f"Portfolio heat: Rs.{open_risk:,.0f} >= Rs.{heat_cap:,.0f}",
+            )
+
+        # Check 9: Position sizing - risk-based sizing with volatility
+        # targeting, soft throttle, and confidence scaling
         risk_amount = self.current_capital * 0.02
+        if signal.volatility_pct is not None and signal.volatility_pct > 0:
+            vol_scale = self.target_vol_pct / signal.volatility_pct
+            risk_amount *= max(0.5, min(1.5, vol_scale))
+        # Soft throttle: halve size once daily loss passes the throttle line
+        throttle_line = (
+            self.current_capital * self.daily_loss_limit_pct * self.throttle_start_mult
+        )
+        throttled = daily_loss < -throttle_line
+        if throttled:
+            risk_amount *= 0.5
         risk_per_share = signal.entry_price - signal.stop_loss
 
         qty = 0  # Initialize to fix bug #1
@@ -199,6 +233,8 @@ class RiskManager:
             max_position_value = self.current_capital * self.max_position_pct
             max_qty = int(max_position_value / signal.entry_price)
             qty = min(risk_based_qty, max_qty)
+            # Confidence scaling: 0.5x (no conviction) to 1.0x (full)
+            qty = int(qty * (0.5 + 0.5 * max(0.0, min(1.0, signal.confidence))))
 
         if qty < 1:
             return RiskDecision(
@@ -207,7 +243,7 @@ class RiskManager:
                 reason="Insufficient capital for minimum position",
             )
 
-        # Check 8: Can afford the position?
+        # Check 10: Can afford the position?
         position_cost = qty * signal.entry_price
         if position_cost > available_cash:
             # Adjust qty to what we can afford
@@ -223,7 +259,8 @@ class RiskManager:
         return RiskDecision(
             approved=True,
             adjusted_qty=qty,
-            reason=f"Approved: R:R {risk_reward:.1f}, Qty {qty}",
+            reason=f"Approved: R:R {risk_reward:.1f}, Qty {qty}"
+            + (" (throttled)" if throttled else ""),
         )
 
     def update_daily_pnl(self, pnl: float):

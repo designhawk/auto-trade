@@ -17,12 +17,14 @@ Automated intraday trading system for NSE (India) using Groww market data, a 5-m
 ```
 
 * **Universe:** `config.NSE_STOCKS` (~150 NSE cash symbols, verified against Groww).
+* **Selection:** daily-factor rank (percentiled, no hand-scale domination) + same-session gap/RVOL boost, sector caps (`sectors.py`), mid-morning re-ranks (09:30/11:00 IST, never evicts held).
 * **Data:** `GrowwBroker` (`growwapi` + TOTP auth), IST timezone, retry ×3.
-* **Strategy:** `IntradayMomentumStrategy` — 20-bar high breakout + 5-bar avg volume > 1.5× + price > 20-EMA + RSI 30–75 + close > prev close. ATR(14)×1.5 or 5-bar low for SL, 2:1 target, max SL 2.5%, 10-bar cooldown per symbol.
-* **Risk (per signal):** 2% capital at risk, max 8% per position, max 8 open, daily loss halt 3%, all-time drawdown breaker 10%, ₹2L cash reserve, volatility filter 0.3–4%, min R:R 2.0.
-* **Costs (simulated):** brokerage 0.03% + STT 0.025% + slippage 0.02% per side.
-* **Storage:** SQLite `trading.db` — `signals`, `trades`, `sessions` tables + timestamped `backups/`.
-* **Observability:** FastAPI (`:8002`) + terminal `monitor.py` + daily rotating logs in `logs/`.
+* **Strategy:** `IntradayMomentumStrategy` — 20-bar high breakout + 5-bar avg volume + price > 20-EMA + RSI 30–75 + 15m trend alignment + above session VWAP. ATR(14)×1.5 or 5-bar low for SL, 2:1 target, max SL 2.5%, cooldown, `volatility_pct` on every signal.
+* **Risk (per signal):** 2% capital at risk scaled by volatility targeting (0.5–1.5×) and confidence (0.5–1×), halved past the soft-throttle line; max 8% per position, max 8 open, 6% portfolio heat cap, daily loss halt 3%, all-time drawdown breaker 10%, ₹2L cash reserve, volatility filter 0.3–4%, min R:R 2.0.
+* **Exits:** half at 1R + SL-to-breakeven, trailing (tightened after 14:30), scratch after 12 stagnant bars, staged EOD wind-down from 15:00, square-off 15:20, force-close backstop 15:25.
+* **Costs (simulated):** brokerage 0.03% + STT 0.025% sell-only + stamp/exchange/SEBI/GST + sampled adverse slippage — full breakdown stored per trade.
+* **Storage:** SQLite `trading.db` — `signals`, `trades` (+MFE/MAE + costs, auto-migrated), `sessions` tables + timestamped `backups/`.
+* **Observability:** FastAPI (`:8002`, `live_prices` flags) + terminal `monitor.py` + `report.py` daily review + daily rotating logs in `logs/`.
 
 Docs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/STRATEGY.md`](docs/STRATEGY.md) · [`docs/STOCK_SELECTION.md`](docs/STOCK_SELECTION.md) · [`docs/RISK_MANAGEMENT.md`](docs/RISK_MANAGEMENT.md) · [`docs/PORTFOLIO.md`](docs/PORTFOLIO.md) · [`docs/BROKER.md`](docs/BROKER.md) · [`docs/DATABASE.md`](docs/DATABASE.md) · [`docs/API.md`](docs/API.md) · [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) · [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
 
@@ -60,6 +62,8 @@ FastAPI docs: http://localhost:8002/docs
 | `python live_trader.py` | Paper trade directly (`--live` asks for `CONFIRM`, still paper-executes — broker is read-only) |
 | `python live_trader.py --capital 1000000` | Override starting capital |
 | `python monitor.py [--follow] [--once] [-i 5]` | Terminal dashboard / log tail / snapshot |
+| `python report.py [--date YYYY-MM-DD]` | Post-session review (expectancy, MFE/MAE, costs, sectors) |
+| `python -m pytest tests/ -q` | Unit suite (22 tests, temp DBs, no broker needed) |
 | `python logs.py [api\|trader\|dashboard\|all] [-n 50] [-f] [--clear]` | Log viewer |
 | `python -c "import db; db.init_db()"` | Init SQLite tables |
 | `python stock_selector.py` | Smoke-test selector on 5 symbols |
@@ -78,7 +82,7 @@ All in `.env` → `config.Config` (`config.py`). Key knobs:
 | `MAX_POSITION_PCT` / `MAX_OPEN_POSITIONS` | 8% / 8 | 10% / 10 | Position cap + concurrency cap |
 | `DAILY_LOSS_LIMIT_PCT` / `MAX_DRAWDOWN_PCT` | 3% / 10% | 2% / 5% | Daily halt / all-time-peak breaker |
 | `MIN_CASH_RESERVE` | 2,00,000 | 1,00,000 | Trading halts below this cash |
-| `BROKERAGE_PCT` / `STT_PCT` / `SLIPPAGE_PCT` | 0.03% / 0.025% / 0.02% | same | Applied both sides in `PaperPortfolio` |
+| `BROKERAGE_PCT` / `STT_PCT` / `SLIPPAGE_MAX_PCT` | 0.03% / 0.025% sell-only / 0.04% sampled | same | Intraday schedule (+stamp/exchange/SEBI/GST); per-trade breakdown stored |
 | `API_PORT` | 8002 | 8002 | FastAPI port |
 | `GROWW_TOTP_TOKEN` / `GROWW_TOTP_SECRET` | — (required) | placeholder | TOTP auth (recommended). Alt: `GROWW_API_KEY` + `GROWW_API_SECRET` with `GrowwBroker(use_api_key=True)` |
 
@@ -91,11 +95,14 @@ Market hours are hardcoded IST 9:15–15:25 (`config.py`). DB path `trading.db`,
 ```
 run.py                Launcher (spawns api.py + live_trader.py, writes logs/api.log, logs/trader.log)
 live_trader.py        Orchestrator: pre_market → on_bar loop (5 min) → force_close → end_session
-intraday_strategy.py  IntradayMomentumStrategy (BaseStrategy impl)
+intraday_strategy.py  IntradayMomentumStrategy (BaseStrategy impl, 15m + VWAP gates)
 base_strategy.py      Signal dataclass + BaseStrategy ABC (generate_signals, required_bars)
-stock_selector.py     Pre-market momentum ranker (daily bars, 5-factor score)
-risk_manager.py       RiskManager.approve() — 8 gates + 2%-risk sizing
-paper_portfolio.py    PaperPortfolio — cash/positions/txn + costs + trailing stop state
+stock_selector.py     Pre-market ranker + intraday re-ranker (percentiled, boosted, capped)
+sectors.py            NSE sector map (caps + attribution)
+risk_manager.py       RiskManager.approve() — 10 gates + vol-targeted sizing
+paper_portfolio.py    PaperPortfolio — cash/positions/txn + intraday cost schedule
+report.py             Daily review (DB-only: expectancy, MFE/MAE, costs, sectors)
+tests/                pytest suite (temp DBs, fake brokers, pinned clock)
 groww_broker.py       GrowwBroker (growwapi, TOTP) — quotes, OHLCV, LTP, holdings
 broker_client.py      BrokerClient ABC + Quote (swap brokers here)
 db.py                 SQLite layer: signals / trades / sessions + backup/restore

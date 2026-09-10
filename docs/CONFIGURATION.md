@@ -17,7 +17,14 @@ Single source: `.env` → `Config` (`config.py`, `load_dotenv()`). No validation
 | `DAILY_LOSS_LIMIT_PCT` / `MAX_DRAWDOWN_PCT` | 3% / 10% | 2% / 5% | daily halt / all-time breaker |
 | `MIN_CASH_RESERVE` | 2,00,000 | 1,00,000 | cash gate |
 | `BROKERAGE_PCT` / `STT_PCT` / `SLIPPAGE_PCT` | 0.03% / 0.025% / 0.02% | same | `PaperPortfolio` defaults (trader doesn't forward config values) |
-| `API_PORT` / `DASHBOARD_PORT` | 8002 / 8501 | 8002 / 8501 | `API_PORT` unused by `api.py` (hardcoded 8002); dashboard port unused (no Streamlit app — `requirements/pyproject` list it but no code uses it) |
+| `API_PORT` / `DASHBOARD_PORT` | 8002 / 8501 | 8002 / 8501 | `api.py` serves `API_PORT`; dashboard port reserved (no dashboard app yet) |
+| `TOP_STOCKS` / `MIN_VOLUME` / `MAX_SECTOR_POSITIONS` / `RESELECT_TIMES` | 30 / 5,00,000 / 3 / 09:30,11:00 | same (sector/times new) | watchlist size, selector pre-filter (unused — 2L hardcoded), sector cap, re-rank times |
+| `TREND_EMA` / `VWAP_REQUIRED` | 20 / true | same | 15m trend span, VWAP gate toggle |
+| `HEAT_CAP_PCT` / `TARGET_VOL_PCT` / `THROTTLE_START_MULT` | 6% / 1.5% / 0.5 | same | total open-risk cap, vol anchor, halve-size line |
+| `PARTIAL_R` / `PARTIAL_FRAC` / `SCRATCH_BARS` / `SCRATCH_R` | 1.0 / 0.5 / 12 / 0.5 | same | scale level + fraction, scratch age/progress |
+| `TRAIL_TIGHTEN_MULT` / `SCALE_1430_R` | 0.5 / 1.0 | same | late-day trail factor + force-scale level |
+| `EXCHANGE_PCT` / `SEBI_PCT` / `STAMP_PCT` / `GST_PCT` | 0.00297% / 0.0001% / 0.002% / 18% | same | intraday schedule (sell-side STT); verify vs contract note |
+| `SLIPPAGE_MAX_PCT` / `SLIPPAGE_SEED` | 0.04% / unset | same | adverse slippage U[0,max]; seed = reproducible |
 | Market hours | 9:15–15:25 hardcoded | — | `config.MARKET_*` + `live_trader.run` loop (300s sleep, force-close ≥15:25) |
 | `DB_PATH` / `BACKUP_DIR` | `trading.db` / `backups` | — | `db.py` (env can't override) |
 | `NSE_STOCKS` | ~150 symbols hardcoded | — | selector universe |

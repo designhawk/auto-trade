@@ -44,12 +44,17 @@ Single-process orchestrator + sidecar API, glued by SQLite.
 | `api.py` | Read-only FastAPI | `db`, `config` |
 | `run.py` / `monitor.py` / `logs.py` / `logger.py` | Launcher / dashboard / viewer / logging setup | subprocess, requests |
 | `config.py` | `Config` + `NSE_STOCKS` universe | `dotenv` |
+| `sectors.py` | `SECTOR_MAP` + `sector_of` (caps + attribution) | — |
+| `report.py` | Post-session review from `trading.db` | `db`, `sectors` |
+| `paths.py` | Project-root `DB_PATH`/`LOG_DIR`/`BACKUP_DIR` | `pathlib` |
+| `tests/` | pytest suite (temp-DB, broker fakes, pinned clock) | `pytest` |
 
-## Data flow (one `on_bar` tick)
+        ## Data flow (one `on_bar` tick)
 
-1. For each open position: fetch `5m×50`, compare close vs `stop_loss`/`take_profit` → `execute_sell` → `insert_trade(SELL)` → `risk_manager.update_daily_pnl/update_capital`. Trailing stop ratchets SL up once price > TP and profit ≥ 2%.
-2. For each watchlist symbol (skip held): fetch `5m×50` → `generate_signals` → `insert_signal` (with approve/reject + `adjusted_qty`) → if approved `execute_buy` → `insert_trade(BUY)`.
-3. `log_portfolio_status()` (cash, count, total, P&L vs initial).
+1. IST clock + `maybe_reselect()` (09:30/11:00 re-rank).
+2. For each open position (5m×50): update MFE/MAE → staged EOD wind-down (≥15:00) → trailing ratchet (tightened after 14:30) → 1R partial + breakeven move → scratch check → SL → TP. Every SELL writes costs + MFE/MAE via `_sell_row`.
+3. For each watchlist symbol not held (skip after 14:45 cutoff): fetch `5m×50` + `15m×60` → `generate_signals(df, df_15m)` → `insert_signal` (with approve/reject + `adjusted_qty`) → if approved `execute_buy` → `insert_trade(BUY)` with cost breakdown.
+4. `log_portfolio_status()` (cash, count, total, P&L vs initial).
 
 ## Key design decisions
 

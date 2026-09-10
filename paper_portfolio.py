@@ -18,6 +18,7 @@ Usage:
 from dataclasses import dataclass, field
 from datetime import datetime, date
 from typing import Dict, List, Optional
+import random
 import pandas as pd
 
 try:
@@ -41,6 +42,11 @@ class Position:
     trailing_stop: bool = False
     trail_activation_pct: float = 0.02
     trail_distance_pct: float = 0.015
+    # Exit management (Phase E): partials + diagnostics
+    scaled: bool = False          # True once the 1R partial is taken
+    initial_risk: float = 0.0     # avg_price - stop_loss at entry (R reference)
+    mfe: float = 0.0              # max favorable excursion, in R multiples
+    mae: float = 0.0              # max adverse excursion, in R multiples (<= 0)
 
 
 @dataclass
@@ -55,6 +61,9 @@ class Transaction:
     brokerage: float
     stt: float
     net_value: float
+    stamp: float = 0.0
+    other_costs: float = 0.0   # exchange + SEBI + GST combined
+    slippage_cost: float = 0.0
 
 
 class PaperPortfolio:
@@ -71,18 +80,31 @@ class PaperPortfolio:
     def __init__(
         self,
         initial_capital: float = 1_000_000,
-        brokerage_pct: float = 0.0003,  # 0.03%
-        stt_pct: float = 0.00025,       # 0.025%
-        slippage_pct: float = 0.0002    # 0.02%
+        brokerage_pct: float = 0.0003,    # 0.03% each side
+        stt_pct: float = 0.00025,         # 0.025% SELL side only (equity intraday)
+        exchange_pct: float = 0.0000297,  # NSE ~0.00297% each side
+        sebi_pct: float = 0.000001,       # Rs.10/crore each side
+        stamp_pct: float = 0.00002,       # 0.002% BUY side only (intraday)
+        gst_pct: float = 0.18,            # 18% on brokerage+exchange+SEBI
+        slippage_max_pct: float = 0.0004, # adverse slippage sampled U[0, max]
+        slippage_seed: Optional[int] = None,
     ):
         """
         Initialize paper portfolio.
-        
+
+        Cost schedule follows NSE equity-intraday norms - verify line items
+        against your broker's contract note before trusting absolute P&L.
+
         Args:
             initial_capital: Starting virtual capital
             brokerage_pct: Brokerage fee as decimal
-            stt_pct: Securities transaction tax as decimal
-            slippage_pct: Slippage assumption as decimal
+            stt_pct: Securities transaction tax as decimal (sell only)
+            exchange_pct: Exchange transaction charges as decimal
+            sebi_pct: SEBI turnover fee as decimal
+            stamp_pct: Stamp duty as decimal (buy only)
+            gst_pct: GST on brokerage+exchange+SEBI
+            slippage_max_pct: Max adverse slippage sampled per fill
+            slippage_seed: Seed for reproducible slippage (None = random)
         """
         self.initial_capital = initial_capital
         self.cash = initial_capital
@@ -90,9 +112,34 @@ class PaperPortfolio:
         self.transactions: List[Transaction] = []
         self.brokerage_pct = brokerage_pct
         self.stt_pct = stt_pct
-        self.slippage_pct = slippage_pct
+        self.exchange_pct = exchange_pct
+        self.sebi_pct = sebi_pct
+        self.stamp_pct = stamp_pct
+        self.gst_pct = gst_pct
+        self.slippage_max_pct = slippage_max_pct
+        self._rng = random.Random(slippage_seed)
         self.total_brokerage = 0.0
         self.total_stt = 0.0
+        self.total_other = 0.0
+        self.total_slippage = 0.0
+
+    def _buy_costs(self, gross_value: float) -> tuple:
+        """Return (brokerage, stt, stamp, exchange, sebi, gst) for a BUY."""
+        brokerage = gross_value * self.brokerage_pct
+        exchange = gross_value * self.exchange_pct
+        sebi = gross_value * self.sebi_pct
+        stamp = gross_value * self.stamp_pct
+        gst = (brokerage + exchange + sebi) * self.gst_pct
+        return brokerage, 0.0, stamp, exchange, sebi, gst
+
+    def _sell_costs(self, gross_value: float) -> tuple:
+        """Return (brokerage, stt, stamp, exchange, sebi, gst) for a SELL."""
+        brokerage = gross_value * self.brokerage_pct
+        stt = gross_value * self.stt_pct
+        exchange = gross_value * self.exchange_pct
+        sebi = gross_value * self.sebi_pct
+        gst = (brokerage + exchange + sebi) * self.gst_pct
+        return brokerage, stt, 0.0, exchange, sebi, gst
     
     def load_positions_from_db(self):
         """Load open positions from trades table on startup."""
@@ -128,7 +175,8 @@ class PaperPortfolio:
                     take_profit=entry_price * 1.02,
                     trailing_stop=True,
                     trail_activation_pct=0.02,
-                    trail_distance_pct=0.015
+                    trail_distance_pct=0.015,
+                    initial_risk=entry_price * 0.02,
                 )
                 self.positions[symbol] = pos
         
@@ -154,26 +202,30 @@ class PaperPortfolio:
         Returns:
             Transaction details
         """
-        # Apply slippage (worse price for buyer)
-        executed_price = price * (1 + self.slippage_pct)
-        
-        # Calculate costs
+        # Sampled adverse slippage (worse price for buyer)
+        slip = self._rng.uniform(0, self.slippage_max_pct)
+        executed_price = price * (1 + slip)
+
+        # NSE equity-intraday schedule (STT on sell side only)
         gross_value = executed_price * qty
-        brokerage = gross_value * self.brokerage_pct
-        stt = gross_value * self.stt_pct
-        net_value = gross_value + brokerage + stt
-        
+        brokerage, stt, stamp, exchange, sebi, gst = self._buy_costs(gross_value)
+        other_costs = stamp + exchange + sebi + gst
+        slippage_cost = (executed_price - price) * qty
+        net_value = gross_value + brokerage + stt + other_costs
+
         # Check if sufficient cash
         if net_value > self.cash:
             return {
                 "success": False,
                 "error": f"Insufficient cash: need Rs.{net_value:,.0f}, have Rs.{self.cash:,.0f}"
             }
-        
+
         # Update cash
         self.cash -= net_value
         self.total_brokerage += brokerage
         self.total_stt += stt
+        self.total_other += other_costs
+        self.total_slippage += slippage_cost
         
         # Update or create position
         if symbol in self.positions:
@@ -189,18 +241,22 @@ class PaperPortfolio:
                 existing.stop_loss = stop_loss
             if take_profit:
                 existing.take_profit = take_profit
+            existing.initial_risk = existing.avg_price - existing.stop_loss
         else:
+            sl = stop_loss if stop_loss else executed_price * 0.98
+            tp = take_profit if take_profit else executed_price * 1.02
             self.positions[symbol] = Position(
                 symbol=symbol,
                 qty=qty,
                 avg_price=executed_price,
-                stop_loss=stop_loss if stop_loss else executed_price * 0.98,
-                take_profit=take_profit if take_profit else executed_price * 1.02,
+                stop_loss=sl,
+                take_profit=tp,
                 trailing_stop=True,
                 trail_activation_pct=0.02,
-                trail_distance_pct=0.015
+                trail_distance_pct=0.015,
+                initial_risk=executed_price - sl,
             )
-        
+
         # Record transaction
         txn = Transaction(
             timestamp=datetime.now(),
@@ -211,10 +267,13 @@ class PaperPortfolio:
             value=gross_value,
             brokerage=brokerage,
             stt=stt,
-            net_value=net_value
+            net_value=net_value,
+            stamp=stamp,
+            other_costs=other_costs,
+            slippage_cost=slippage_cost
         )
         self.transactions.append(txn)
-        
+
         return {
             "success": True,
             "symbol": symbol,
@@ -223,6 +282,9 @@ class PaperPortfolio:
             "value": gross_value,
             "brokerage": brokerage,
             "stt": stt,
+            "stamp": stamp,
+            "other_costs": other_costs,
+            "slippage_cost": slippage_cost,
             "total_cost": net_value,
             "remaining_cash": self.cash
         }
@@ -252,25 +314,29 @@ class PaperPortfolio:
                 "error": f"Insufficient quantity: have {position.qty}, want to sell {qty}"
             }
         
-        # Apply slippage (worse price for seller)
-        executed_price = price * (1 - self.slippage_pct)
-        
-        # Calculate costs
+        # Sampled adverse slippage (worse price for seller)
+        slip = self._rng.uniform(0, self.slippage_max_pct)
+        executed_price = price * (1 - slip)
+
+        # NSE equity-intraday schedule (STT on sell side)
         gross_value = executed_price * qty
-        brokerage = gross_value * self.brokerage_pct
-        stt = gross_value * self.stt_pct
-        net_value = gross_value - brokerage - stt
-        
+        brokerage, stt, stamp, exchange, sebi, gst = self._sell_costs(gross_value)
+        other_costs = stamp + exchange + sebi + gst
+        slippage_cost = (price - executed_price) * qty
+        net_value = gross_value - brokerage - stt - other_costs
+
         # Calculate P&L
         cost_basis = position.avg_price * qty
         gross_pnl = gross_value - cost_basis
         net_pnl = net_value - cost_basis
         pnl_pct = (net_pnl / cost_basis) * 100
-        
+
         # Update cash
         self.cash += net_value
         self.total_brokerage += brokerage
         self.total_stt += stt
+        self.total_other += other_costs
+        self.total_slippage += slippage_cost
         
         # Update position
         position.qty -= qty
@@ -287,10 +353,13 @@ class PaperPortfolio:
             value=gross_value,
             brokerage=brokerage,
             stt=stt,
-            net_value=net_value
+            net_value=net_value,
+            stamp=stamp,
+            other_costs=other_costs,
+            slippage_cost=slippage_cost
         )
         self.transactions.append(txn)
-        
+
         return {
             "success": True,
             "symbol": symbol,
@@ -299,6 +368,9 @@ class PaperPortfolio:
             "value": gross_value,
             "brokerage": brokerage,
             "stt": stt,
+            "stamp": stamp,
+            "other_costs": other_costs,
+            "slippage_cost": slippage_cost,
             "net_proceeds": net_value,
             "gross_pnl": gross_pnl,
             "net_pnl": net_pnl,
@@ -354,7 +426,9 @@ class PaperPortfolio:
             "num_positions": len(self.positions),
             "positions": position_details,
             "total_brokerage": self.total_brokerage,
-            "total_stt": self.total_stt
+            "total_stt": self.total_stt,
+            "total_other": self.total_other,
+            "total_slippage": self.total_slippage
         }
 
     def get_positions(self) -> List[Position]:
@@ -384,5 +458,7 @@ class PaperPortfolio:
             "symbols": list(self.positions.keys()),
             "total_transactions": len(self.transactions),
             "total_brokerage": self.total_brokerage,
-            "total_stt": self.total_stt
+            "total_stt": self.total_stt,
+            "total_other": self.total_other,
+            "total_slippage": self.total_slippage
         }

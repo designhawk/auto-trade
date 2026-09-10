@@ -79,17 +79,72 @@ class LiveTrader:
             daily_loss_limit_pct=config.DAILY_LOSS_LIMIT_PCT,
             max_drawdown_pct=config.MAX_DRAWDOWN_PCT,
             min_risk_reward=config.MIN_RISK_REWARD,
+            heat_cap_pct=config.HEAT_CAP_PCT,
+            target_vol_pct=config.TARGET_VOL_PCT,
+            throttle_start_mult=config.THROTTLE_START_MULT,
         )
-        self.paper_portfolio = PaperPortfolio(initial_capital)
+        self.paper_portfolio = PaperPortfolio(
+            initial_capital,
+            brokerage_pct=config.BROKERAGE_PCT,
+            stt_pct=config.STT_PCT,
+            exchange_pct=config.EXCHANGE_PCT,
+            sebi_pct=config.SEBI_PCT,
+            stamp_pct=config.STAMP_PCT,
+            gst_pct=config.GST_PCT,
+            slippage_max_pct=config.SLIPPAGE_MAX_PCT,
+            slippage_seed=config.SLIPPAGE_SEED,
+        )
         self.paper_portfolio.load_positions_from_db()  # Load existing positions
         self.stock_selector = StockSelector(broker)
 
         # Trading state
         self.universe: List[str] = []
         self.watchlist: List[str] = []
+        self.ranked_all: List[dict] = []  # full pre-market ranking (reserves live here)
+        self._reselect_done: set = set()  # (date, hh, mm) already re-ranked
         self.session_start_capital = initial_capital
 
         log.info(f"LiveTrader initialized. Mode: {'LIVE' if is_live else 'PAPER'}")
+
+    @staticmethod
+    def _ist_now():
+        """Current time in IST (market timezone)."""
+        import pytz
+
+        return datetime.now(pytz.timezone("Asia/Kolkata"))
+
+    @staticmethod
+    def _eod_exit_frac(now_ist) -> float:
+        """Fraction of each position to liquidate this tick in the EOD window."""
+        hm = (now_ist.hour, now_ist.minute)
+        if hm >= (config.FULL_EXIT_HOUR, config.FULL_EXIT_MINUTE):
+            return 1.0
+        if hm >= (config.SCALE_START_HOUR, config.SCALE_START_MINUTE):
+            return 0.5
+        return 0.0
+
+    @staticmethod
+    def _sell_row(symbol, result, exit_reason, pos=None):
+        """Build a trades-table row for a SELL (costs + MFE/MAE included)."""
+        row = {
+            "timestamp": datetime.now().isoformat(),
+            "symbol": symbol,
+            "side": "SELL",
+            "qty": result["qty"],
+            "price": result["price"],
+            "value": result["value"],
+            "pnl": result["net_pnl"],
+            "pnl_pct": result["pnl_pct"],
+            "exit_reason": exit_reason,
+            "brokerage": result.get("brokerage"),
+            "stt": result.get("stt"),
+            "other_costs": result.get("other_costs"),
+            "slippage_cost": result.get("slippage_cost"),
+        }
+        if pos is not None:
+            row["mfe"] = pos.mfe
+            row["mae"] = pos.mae
+        return row
 
     def pre_market(self) -> None:
         """
@@ -108,9 +163,13 @@ class LiveTrader:
             self.universe = config.NSE_STOCKS
 
         try:
-            # Select top momentum stocks using daily data (works at any time)
-            top_stocks = self.stock_selector.select_top_stocks(
-                self.universe, top_n=config.TOP_STOCKS, interval="1d", bars=100
+            # Rank the full universe on daily data (works at any time),
+            # then take the sector-capped top_n as the watchlist
+            self.ranked_all = self.stock_selector.rank_stocks(
+                self.universe, interval="1d", bars=100
+            )
+            top_stocks = self.stock_selector.apply_sector_caps(
+                self.ranked_all, config.TOP_STOCKS
             )
 
             self.watchlist = self.stock_selector.get_watchlist(top_stocks)
@@ -126,6 +185,50 @@ class LiveTrader:
             # Fallback to default watchlist
             self.watchlist = self.universe[:20]
             log.info(f"Using fallback watchlist: {len(self.watchlist)} stocks")
+
+    def maybe_reselect(self) -> None:
+        """Re-rank watchlist at configured times (default 09:30, 11:00 IST)."""
+        now = self._ist_now()
+        key = (now.date().isoformat(), now.hour, now.minute)
+        for hh, mm in config.RESELECT_TIMES:
+            slot = (now.date().isoformat(), hh, mm)
+            if (now.hour, now.minute) >= (hh, mm) and slot not in self._reselect_done:
+                self._reselect_done.add(slot)
+                self._do_reselect()
+                break
+
+    def _do_reselect(self) -> None:
+        """Score watchlist + reserves on 5m action; keep the best top_n."""
+        if not self.ranked_all:
+            return
+        reserve_syms = [
+            m["symbol"] for m in self.ranked_all if m["symbol"] not in self.watchlist
+        ][:20]
+        # Never evict symbols we hold - re-ranking only affects entries
+        held = {pos.symbol for pos in self.paper_portfolio.get_positions()}
+        candidates = [s for s in self.watchlist if s not in held] + reserve_syms
+
+        scored = []
+        for symbol in candidates:
+            try:
+                df = self.broker.get_ohlcv(symbol, "5m", 60)
+                score, _ = self.stock_selector.score_intraday(symbol, df)
+                if score > 0:
+                    scored.append((score, symbol))
+            except Exception as e:
+                log.error(f"Reselect: skipping {symbol}: {e}")
+        scored.sort(reverse=True)
+
+        keep = [s for s in self.watchlist if s in held]
+        for _, symbol in scored:
+            if symbol not in keep:
+                keep.append(symbol)
+            if len(keep) >= config.TOP_STOCKS:
+                break
+        dropped = [s for s in self.watchlist if s not in keep]
+        added = [s for s in keep if s not in self.watchlist]
+        self.watchlist = keep[: config.TOP_STOCKS]
+        log.info(f"RESELECT: dropped={dropped} added={added} watchlist={len(self.watchlist)}")
 
     def on_bar(self) -> None:
         """
@@ -143,8 +246,11 @@ class LiveTrader:
         log.info("-" * 60)
 
         now = datetime.now()
+        now_ist = self._ist_now()
+        self.maybe_reselect()
 
-        # First: Check existing positions for stop loss / take profit
+        # First: Manage existing positions (MFE/MAE, EOD wind-down, trail,
+        # partials, scratch, SL/TP)
         positions = self.paper_portfolio.get_positions()
         for pos in positions:
             try:
@@ -154,6 +260,41 @@ class LiveTrader:
                     continue
 
                 current_price = df["close"].iloc[-1]
+                bar_high = df["high"].iloc[-1]
+                bar_low = df["low"].iloc[-1]
+
+                # MFE/MAE tracking (R multiples vs initial entry risk)
+                if pos.initial_risk > 0:
+                    pos.mfe = max(
+                        pos.mfe, (bar_high - pos.avg_price) / pos.initial_risk)
+                    pos.mae = min(
+                        pos.mae, (bar_low - pos.avg_price) / pos.initial_risk)
+
+                late_day = (now_ist.hour, now_ist.minute) >= (
+                    config.TIGHTEN_HOUR, config.TIGHTEN_MINUTE)
+                trail_dist = pos.trail_distance_pct * (
+                    config.TRAIL_TIGHTEN_MULT if late_day else 1.0)
+
+                # Staged EOD wind-down: half of qty per tick from 15:00, all at 15:20
+                eod_frac = self._eod_exit_frac(now_ist)
+                if eod_frac > 0 and pos.qty > 0:
+                    sell_qty = (pos.qty if eod_frac >= 1.0
+                                else max(1, int(pos.qty * eod_frac)))
+                    sell_qty = min(sell_qty, pos.qty)
+                    result = self.paper_portfolio.execute_sell(
+                        symbol, sell_qty, current_price
+                    )
+                    if result["success"]:
+                        log.info(
+                            f"EOD SCALE: {symbol} - Qty: {sell_qty}, "
+                            f"P&L: Rs.{result['net_pnl']:.2f}"
+                        )
+                        self.risk_manager.update_daily_pnl(result["net_pnl"])
+                        self.risk_manager.update_capital(self.get_portfolio_value())
+                        insert_trade(self._sell_row(symbol, result, "EOD_SCALE", pos))
+                    else:
+                        log.error(f"EOD SCALE FAILED: {symbol} - {result['error']}")
+                    continue
 
                 # Trailing stop: ratchet SL up once profit >= activation.
                 # Must run BEFORE the SL/TP checks (and without requiring
@@ -161,7 +302,7 @@ class LiveTrader:
                 if pos.trailing_stop and pos.avg_price > 0:
                     profit_pct = (current_price - pos.avg_price) / pos.avg_price
                     if profit_pct >= pos.trail_activation_pct:
-                        new_stop = current_price * (1 - pos.trail_distance_pct)
+                        new_stop = current_price * (1 - trail_dist)
                         if new_stop > pos.stop_loss:
                             pos.stop_loss = new_stop
                             log.info(
@@ -172,6 +313,56 @@ class LiveTrader:
                 take_profit = pos.take_profit
 
                 if stop_loss <= 0 or take_profit <= 0:
+                    continue
+
+                # R multiple vs live target (TP can move after averaging)
+                r_mult = None
+                if take_profit > pos.avg_price and pos.initial_risk > 0:
+                    r_mult = (current_price - pos.avg_price) / pos.initial_risk
+
+                # Partials: sell PARTIAL_FRAC at PARTIAL_R, SL to breakeven.
+                # Late-day the threshold drops to SCALE_1430_R.
+                partial_at = config.SCALE_1430_R if late_day else config.PARTIAL_R
+                if (not pos.scaled and r_mult is not None and r_mult >= partial_at
+                        and pos.qty >= 2):
+                    sell_qty = min(max(1, int(pos.qty * config.PARTIAL_FRAC)),
+                                   pos.qty - 1)
+                    result = self.paper_portfolio.execute_sell(
+                        symbol, sell_qty, current_price
+                    )
+                    if result["success"]:
+                        pos.scaled = True
+                        pos.stop_loss = max(pos.stop_loss, pos.avg_price)
+                        stop_loss = pos.stop_loss
+                        log.info(
+                            f"SCALED 1R: {symbol} - Qty: {sell_qty}, "
+                            f"P&L: Rs.{result['net_pnl']:.2f}"
+                        )
+                        self.risk_manager.update_daily_pnl(result["net_pnl"])
+                        self.risk_manager.update_capital(self.get_portfolio_value())
+                        insert_trade(self._sell_row(symbol, result, "SCALED_1R", pos))
+                    else:
+                        log.error(f"SCALE FAILED: {symbol} - {result['error']}")
+
+                # Scratch: no progress within SCRATCH_BARS (unscaled only)
+                age_min = ((now - pos.entry_time).total_seconds() / 60
+                           if pos.entry_time else 0)
+                if (not pos.scaled and r_mult is not None
+                        and age_min >= config.SCRATCH_BARS * 5
+                        and r_mult < config.SCRATCH_R):
+                    result = self.paper_portfolio.execute_sell(
+                        symbol, pos.qty, current_price
+                    )
+                    if result["success"]:
+                        log.info(
+                            f"SCRATCHED: {symbol} - R: {r_mult:.2f}, "
+                            f"P&L: Rs.{result['net_pnl']:.2f}"
+                        )
+                        self.risk_manager.update_daily_pnl(result["net_pnl"])
+                        self.risk_manager.update_capital(self.get_portfolio_value())
+                        insert_trade(self._sell_row(symbol, result, "SCRATCH", pos))
+                    else:
+                        log.error(f"SCRATCH FAILED: {symbol} - {result['error']}")
                     continue
 
                 # Check stop loss
@@ -186,19 +377,7 @@ class LiveTrader:
                         log.info(f"CLOSED: {symbol} - P&L: Rs.{result['net_pnl']:.2f}")
                         self.risk_manager.update_daily_pnl(result["net_pnl"])
                         self.risk_manager.update_capital(self.get_portfolio_value())
-                        insert_trade(
-                            {
-                                "timestamp": now.isoformat(),
-                                "symbol": symbol,
-                                "side": "SELL",
-                                "qty": result["qty"],
-                                "price": result["price"],
-                                "value": result["value"],
-                                "pnl": result["net_pnl"],
-                                "pnl_pct": result["pnl_pct"],
-                                "exit_reason": "STOP_LOSS",
-                            }
-                        )
+                        insert_trade(self._sell_row(symbol, result, "STOP_LOSS", pos))
                     continue
 
                 # Check take profit
@@ -213,39 +392,39 @@ class LiveTrader:
                         log.info(f"CLOSED: {symbol} - P&L: Rs.{result['net_pnl']:.2f}")
                         self.risk_manager.update_daily_pnl(result["net_pnl"])
                         self.risk_manager.update_capital(self.get_portfolio_value())
-                        insert_trade(
-                            {
-                                "timestamp": now.isoformat(),
-                                "symbol": symbol,
-                                "side": "SELL",
-                                "qty": result["qty"],
-                                "price": result["price"],
-                                "value": result["value"],
-                                "pnl": result["net_pnl"],
-                                "pnl_pct": result["pnl_pct"],
-                                "exit_reason": "TAKE_PROFIT",
-                            }
-                        )
+                        insert_trade(self._sell_row(symbol, result, "TAKE_PROFIT", pos))
                     continue
 
             except Exception as e:
                 log.error(f"Error checking position {symbol}: {e}")
 
-        # Second: Check for new entry signals
+        # Second: Check for new entry signals (closed after ENTRY_CUTOFF)
+        entries_open = (now_ist.hour, now_ist.minute) < (
+            config.ENTRY_CUTOFF_HOUR, config.ENTRY_CUTOFF_MINUTE)
+        if not entries_open:
+            log.info("Past entry cutoff - no new entries this bar")
         for symbol in self.watchlist:
             try:
+                if not entries_open:
+                    break
                 # Skip if already in position
                 if self.paper_portfolio.has_position(symbol):
                     continue
 
-                # Fetch OHLCV data
+                # Fetch OHLCV data (5m for signals, 15m for trend filter)
                 df = self.broker.get_ohlcv(symbol, "5m", 50)
 
                 if len(df) < self.strategy.required_bars():
                     continue
 
+                df_15m = None
+                try:
+                    df_15m = self.broker.get_ohlcv(symbol, "15m", 60)
+                except Exception as e:
+                    log.error(f"15m data unavailable for {symbol}: {e}")
+
                 # Generate signals
-                signals = self.strategy.generate_signals(symbol, df)
+                signals = self.strategy.generate_signals(symbol, df, df_15m)
 
                 for signal in signals:
                     # Log signal to database
@@ -263,7 +442,12 @@ class LiveTrader:
 
                     # Check risk management
                     current_positions = [
-                        {"symbol": pos.symbol, "qty": pos.qty}
+                        {
+                            "symbol": pos.symbol,
+                            "qty": pos.qty,
+                            "avg_price": pos.avg_price,
+                            "stop_loss": pos.stop_loss,
+                        }
                         for pos in self.paper_portfolio.get_positions()
                     ]
 
@@ -318,6 +502,10 @@ class LiveTrader:
                                     "pnl": 0,
                                     "pnl_pct": 0,
                                     "exit_reason": "SIGNAL_ENTRY",
+                                    "brokerage": result.get("brokerage"),
+                                    "stt": result.get("stt"),
+                                    "other_costs": result.get("other_costs"),
+                                    "slippage_cost": result.get("slippage_cost"),
                                 }
                             )
                         else:
@@ -421,17 +609,7 @@ class LiveTrader:
 
                     # Log trade to database
                     insert_trade(
-                        {
-                            "timestamp": datetime.now().isoformat(),
-                            "symbol": symbol,
-                            "side": "SELL",
-                            "qty": qty,
-                            "price": result["price"],
-                            "value": result["value"],
-                            "pnl": result["net_pnl"],
-                            "pnl_pct": result["pnl_pct"],
-                            "exit_reason": "FORCE_CLOSE_EOD",
-                        }
+                        self._sell_row(symbol, result, "FORCE_CLOSE_EOD", position)
                     )
 
                     # Update risk manager P&L
@@ -642,7 +820,15 @@ def main():
 
     # Initialize components
     broker = GrowwBroker()
-    strategy = IntradayMomentumStrategy()  # 5-minute intraday strategy
+    strategy = IntradayMomentumStrategy(
+        lookback=config.LOOKBACK,
+        volume_multiplier=config.VOLUME_MULTIPLIER,
+        min_risk_reward=config.MIN_RISK_REWARD,
+        max_stop_loss_pct=config.MAX_STOP_LOSS_PCT,
+        cooldown_bars=config.COOLDOWN_BARS,
+        trend_ema=config.TREND_EMA,
+        vwap_required=config.VWAP_REQUIRED,
+    )
 
     # Create trader
     trader = LiveTrader(
