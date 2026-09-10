@@ -95,6 +95,11 @@ class Config:
     API_PORT = int(os.getenv("API_PORT", "8002"))
     DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "8501"))
 
+    # Streaming feed (fail-open: REST fallback when inactive/stale)
+    FEED_ENABLED = os.getenv("FEED_ENABLED", "true").lower() == "true"
+    FEED_MAX_AGE_S = int(os.getenv("FEED_MAX_AGE_S", "60"))
+    INSTRUMENTS_TTL_DAYS = int(os.getenv("INSTRUMENTS_TTL_DAYS", "7"))
+
     # Database
     DB_PATH = "trading.db"
     BACKUP_DIR = "backups"

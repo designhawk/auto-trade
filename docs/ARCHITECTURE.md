@@ -46,6 +46,8 @@ Single-process orchestrator + sidecar API, glued by SQLite.
 | `config.py` | `Config` + `NSE_STOCKS` universe | `dotenv` |
 | `sectors.py` | `SECTOR_MAP` + `sector_of` (caps + attribution) | — |
 | `report.py` | Post-session review from `trading.db` | `db`, `sectors` |
+| `feed_manager.py` | Streaming LTP: subscribe/diff/cache/watchdog (sync-poll, fail-open) | `growwapi.GrowwFeed` |
+| `instruments.py` | Symbol→token map (disk cache + weekly refresh) | `pandas` |
 | `paths.py` | Project-root `DB_PATH`/`LOG_DIR`/`BACKUP_DIR` | `pathlib` |
 | `tests/` | pytest suite (temp-DB, broker fakes, pinned clock) | `pytest` |
 

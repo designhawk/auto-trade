@@ -25,6 +25,7 @@ Single source: `.env` → `Config` (`config.py`, `load_dotenv()`). No validation
 | `TRAIL_TIGHTEN_MULT` / `SCALE_1430_R` | 0.5 / 1.0 | same | late-day trail factor + force-scale level |
 | `EXCHANGE_PCT` / `SEBI_PCT` / `STAMP_PCT` / `GST_PCT` | 0.00297% / 0.0001% / 0.002% / 18% | same | intraday schedule (sell-side STT); verify vs contract note |
 | `SLIPPAGE_MAX_PCT` / `SLIPPAGE_SEED` | 0.04% / unset | same | adverse slippage U[0,max]; seed = reproducible |
+| `FEED_ENABLED` / `FEED_MAX_AGE_S` / `INSTRUMENTS_TTL_DAYS` | true / 60s / 7d | same | streaming LTP (REST fallback), tick freshness, token-cache TTL |
 | Market hours | 9:15–15:25 hardcoded | — | `config.MARKET_*` + `live_trader.run` loop (300s sleep, force-close ≥15:25) |
 | `DB_PATH` / `BACKUP_DIR` | `trading.db` / `backups` | — | `db.py` (env can't override) |
 | `NSE_STOCKS` | ~150 symbols hardcoded | — | selector universe |

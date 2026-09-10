@@ -74,11 +74,25 @@ class BrokerClient(ABC):
     def get_ltp(self, symbols: list[str]) -> dict[str, float]:
         """
         Get Last Traded Price for multiple symbols.
-        
+
         Args:
             symbols: List of trading symbols
-            
+
         Returns:
             Dictionary mapping symbol to LTP
+        """
+        ...
+
+    @abstractmethod
+    def get_day_ohlc(self, symbols: list[str]) -> dict:
+        """
+        Day OHLC snapshot per symbol in as few calls as possible.
+
+        Args:
+            symbols: List of trading symbols
+
+        Returns:
+            Dictionary mapping symbol to {"open","high","low","close"}.
+            Unresolvable symbols are omitted.
         """
         ...

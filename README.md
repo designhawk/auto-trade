@@ -17,8 +17,8 @@ Automated intraday trading system for NSE (India) using Groww market data, a 5-m
 ```
 
 * **Universe:** `config.NSE_STOCKS` (~150 NSE cash symbols, verified against Groww).
-* **Selection:** daily-factor rank (percentiled, no hand-scale domination) + same-session gap/RVOL boost, sector caps (`sectors.py`), mid-morning re-ranks (09:30/11:00 IST, never evicts held).
-* **Data:** `GrowwBroker` (`growwapi` + TOTP auth), IST timezone, retry ×3.
+* **Selection:** daily-factor rank (percentiled, no hand-scale domination) + same-session gap/activity boost from ONE batched snapshot, sector caps (`sectors.py`), mid-morning re-ranks (09:30/11:00 IST, never evicts held).
+* **Data:** `GrowwBroker` (`growwapi` + TOTP auth), IST timezone, retry ×3. Streaming LTP feed (sync-poll, 60s freshness watchdog, REST fallback) + batched day-OHLC snapshots.
 * **Strategy:** `IntradayMomentumStrategy` — 20-bar high breakout + 5-bar avg volume + price > 20-EMA + RSI 30–75 + 15m trend alignment + above session VWAP. ATR(14)×1.5 or 5-bar low for SL, 2:1 target, max SL 2.5%, cooldown, `volatility_pct` on every signal.
 * **Risk (per signal):** 2% capital at risk scaled by volatility targeting (0.5–1.5×) and confidence (0.5–1×), halved past the soft-throttle line; max 8% per position, max 8 open, 6% portfolio heat cap, daily loss halt 3%, all-time drawdown breaker 10%, ₹2L cash reserve, volatility filter 0.3–4%, min R:R 2.0.
 * **Exits:** half at 1R + SL-to-breakeven, trailing (tightened after 14:30), scratch after 12 stagnant bars, staged EOD wind-down from 15:00, square-off 15:20, force-close backstop 15:25.
@@ -99,6 +99,8 @@ intraday_strategy.py  IntradayMomentumStrategy (BaseStrategy impl, 15m + VWAP ga
 base_strategy.py      Signal dataclass + BaseStrategy ABC (generate_signals, required_bars)
 stock_selector.py     Pre-market ranker + intraday re-ranker (percentiled, boosted, capped)
 sectors.py            NSE sector map (caps + attribution)
+feed_manager.py       Streaming LTP (subscribe/diff/cache/watchdog, fail-open)
+instruments.py        Symbol→token map for feed (disk cache + weekly refresh)
 risk_manager.py       RiskManager.approve() — 10 gates + vol-targeted sizing
 paper_portfolio.py    PaperPortfolio — cash/positions/txn + intraday cost schedule
 report.py             Daily review (DB-only: expectancy, MFE/MAE, costs, sectors)

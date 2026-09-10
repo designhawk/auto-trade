@@ -193,33 +193,35 @@ class StockSelector:
             i = j + 1
         return ranks
 
-    def session_boost(self, symbol: str, prev_close: float, avg_daily_vol: float) -> Tuple[float, dict]:
-        """
-        Same-session multiplier (0.85-1.20) from gap + RVOL.
+    @staticmethod
+    def _market_elapsed_min() -> int:
+        """Minutes since 9:15 IST (<= 0 pre-market)."""
+        now = datetime.now(pytz.timezone("Asia/Kolkata"))
+        return (now.hour * 60 + now.minute) - (9 * 60 + 15)
 
-        Fail-open 1.0 before the open or on any data error - a missing
-        morning read must never veto an otherwise good candidate.
+    @staticmethod
+    def session_boost(symbol: str, prev_close: float, atr_pct: float,
+                      day_open=None, day_high=None, day_low=None) -> Tuple[float, dict]:
+        """
+        Same-session multiplier (0.85-1.20) from overnight gap + early
+        day-range activity vs ATR.
+
+        Fail-open 1.0 whenever inputs are missing - a missing morning read
+        must never veto an otherwise good candidate.
         """
         try:
-            IST = pytz.timezone("Asia/Kolkata")
-            now = datetime.now(IST)
-            elapsed = (now.hour * 60 + now.minute) - (9 * 60 + 15)
-            if elapsed <= 0 or prev_close <= 0 or avg_daily_vol <= 0:
-                return 1.0, {"skipped": "pre-market"}
-
-            df = self.broker.get_ohlcv(symbol, "5m", 20)
-            today = df[df.index.date == now.date()]
-            if len(today) < 2:
-                return 1.0, {"skipped": "no-session-bars"}
-
-            gap_pct = (today["open"].iloc[0] / prev_close - 1) * 100
-            expected_vol = avg_daily_vol * (elapsed / 375.0)
-            rvol = today["volume"].sum() / expected_vol if expected_vol > 0 else 1.0
-
+            if not prev_close or prev_close <= 0 or not atr_pct or atr_pct <= 0:
+                return 1.0, {"skipped": "no-baseline"}
+            if day_open is None:
+                return 1.0, {"skipped": "no-snapshot"}
+            gap_pct = (day_open / prev_close - 1) * 100
+            activity = 0.0
+            if day_high is not None and day_low is not None:
+                activity = ((day_high - day_low) / prev_close * 100) / atr_pct
             gap_term = max(-1.0, min(1.0, gap_pct / 2.0)) * 0.05
-            rvol_term = max(-0.5, min(1.0, (rvol - 1.0) / 2.0)) * 0.10
-            mult = max(0.85, min(1.20, 1.0 + gap_term + rvol_term))
-            return mult, {"gap_pct": gap_pct, "rvol": rvol}
+            act_term = max(-0.5, min(1.0, (activity - 0.3) / 1.0)) * 0.10
+            mult = max(0.85, min(1.20, 1.0 + gap_term + act_term))
+            return mult, {"gap_pct": gap_pct, "activity": activity}
         except Exception as e:
             return 1.0, {"skipped": f"error: {e}"}
 
@@ -232,7 +234,7 @@ class StockSelector:
         """
         Score every symbol: base factors percentile-ranked across the
         candidate set (no hand-scaled domination), then a same-session
-        gap/RVOL boost for the top 60. Returns ALL passing candidates,
+        gap/activity boost for the top 60. Returns ALL passing candidates,
         sorted by final momentum_score descending.
         """
         print(f"[SELECTOR] Evaluating {len(symbols)} stocks for momentum...")
@@ -271,11 +273,24 @@ class StockSelector:
             m["session_boost"] = 1.0
             m["momentum_score"] = m["base_score"]
 
-        # Same-session boost for the top 60 by base score (bounds API calls)
+        # Same-session boost for the top 60 by base score: ONE batched
+        # day-OHLC snapshot instead of per-symbol candle fetches
         passing.sort(key=lambda m: m["base_score"], reverse=True)
-        for m in passing[:60]:
+        cands = passing[:60]
+        snap = {}
+        if self._market_elapsed_min() > 0:
+            try:
+                getter = getattr(self.broker, "get_day_ohlc", None)
+                if getter is not None:
+                    snap = getter([m["symbol"] for m in cands]) or {}
+            except Exception as e:
+                print(f"[SELECTOR] day snapshot unavailable: {e}")
+        for m in cands:
+            d = snap.get(m["symbol"], {})
             mult, _ = self.session_boost(
-                m["symbol"], m.get("prev_close", 0), m.get("avg_daily_volume", 0)
+                m["symbol"], m.get("prev_close", 0),
+                m.get("volatility_pct", 0),
+                d.get("open"), d.get("high"), d.get("low"),
             )
             m["session_boost"] = mult
             m["momentum_score"] = m["base_score"] * mult

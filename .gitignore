@@ -20,6 +20,7 @@ build/
 *.sqlite3
 trading.db
 backups/
+instruments.csv
 *.db-journal
 sessions/*.json
 logs/

@@ -186,6 +186,17 @@ class LiveTrader:
             self.watchlist = self.universe[:20]
             log.info(f"Using fallback watchlist: {len(self.watchlist)} stocks")
 
+        self._subscribe_feed()
+
+    def _subscribe_feed(self) -> None:
+        """Subscribe the watchlist to streaming LTP (no-op if unsupported)."""
+        starter = getattr(self.broker, "start_feed", None)
+        if starter is not None:
+            try:
+                starter(self.watchlist)
+            except Exception as e:
+                log.error(f"Feed subscribe failed: {e}")
+
     def maybe_reselect(self) -> None:
         """Re-rank watchlist at configured times (default 09:30, 11:00 IST)."""
         now = self._ist_now()
@@ -229,6 +240,7 @@ class LiveTrader:
         added = [s for s in keep if s not in self.watchlist]
         self.watchlist = keep[: config.TOP_STOCKS]
         log.info(f"RESELECT: dropped={dropped} added={added} watchlist={len(self.watchlist)}")
+        self._subscribe_feed()
 
     def on_bar(self) -> None:
         """

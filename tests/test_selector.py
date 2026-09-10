@@ -46,9 +46,36 @@ def test_rank_stocks_sorted_and_boosted():
 
 
 def test_session_boost_fail_open():
-    sel = StockSelector(_BoomBroker())
-    mult, info = sel.session_boost("X", 100.0, 1_000_000)
-    assert mult == 1.0  # broker raises -> fail-open, never a veto
+    mult, _ = StockSelector.session_boost("X", 100.0, 1.0)  # no snapshot
+    assert mult == 1.0
+    mult, _ = StockSelector.session_boost("X", 0, 1.0, 101.0, 102.0, 99.0)
+    assert mult == 1.0  # no baseline
+
+
+def test_session_boost_math():
+    # gap +2% on a hot tape -> boosted
+    mult, det = StockSelector.session_boost("X", 100.0, 1.0, 102.0, 103.0, 101.0)
+    assert mult > 1.0 and abs(det["gap_pct"] - 2.0) < 1e-9
+    # gap down on a dead tape -> penalized but floored
+    mult2, _ = StockSelector.session_boost("X", 100.0, 1.0, 95.0, 95.0, 95.0)
+    assert 0.85 <= mult2 < 1.0
+
+
+def test_rank_applies_snapshot_boost():
+    class _SnapBroker:
+        def get_ohlcv(self, symbol, interval, bars):
+            if symbol == "UP":
+                return _trend_df(step=0.8)
+            raise RuntimeError("no data")
+
+        def get_day_ohlc(self, symbols):
+            return {s: {"open": 110.0, "high": 113.0, "low": 109.0, "close": 112.5}
+                    for s in symbols}
+
+    sel = StockSelector(_SnapBroker())
+    ranked = sel.rank_stocks(["UP", "MISSING"], interval="1d", bars=100)
+    assert ranked and ranked[0]["symbol"] == "UP"
+    assert ranked[0]["session_boost"] >= 1.0
 
 
 def test_sector_caps():

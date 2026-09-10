@@ -88,3 +88,55 @@ def test_get_ltp_chunks_over_50():
     out = b.get_ltp([f"S{i}" for i in range(60)])
     assert len(out) == 60 and out["S59"] == 100.0
     assert fake.ltp_calls == [50, 10]
+
+
+def test_get_day_ohlc_batch_and_parse():
+    class _C(_FakeClient):
+        def __init__(self):
+            super().__init__()
+            self.ohlc_calls = []
+
+        def get_ohlc(self, segment, exchange_trading_symbols):
+            self.ohlc_calls.append(len(exchange_trading_symbols))
+            assert len(exchange_trading_symbols) <= 50
+            return {
+                "NSE_A": {"open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0},
+                "NSE_BAD": {"open": 1.0},  # missing keys -> skipped
+            }
+
+    b = GrowwBroker()
+    fake = _C()
+    b._client = fake
+    out = b.get_day_ohlc(["A", "BAD"])
+    assert out == {"A": {"open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0}}
+    b.get_day_ohlc([f"S{i}" for i in range(55)])
+    assert fake.ohlc_calls[-2:] == [50, 5]
+
+
+class _FeedMgr:
+    def __init__(self, prices, fresh=True):
+        self._prices = prices
+        self._fresh = fresh
+        self.active = True
+
+    def get_cached(self, symbols):
+        return {s: self._prices[s] for s in symbols if s in self._prices}, True
+
+    def is_fresh(self, max_age_s):
+        return self._fresh
+
+
+def test_get_ltp_prefers_fresh_feed():
+    b = GrowwBroker()
+    b._client = _FakeClient()
+    b._client.get_ltp = lambda **kw: (_ for _ in ()).throw(RuntimeError("no REST"))
+    b._feed_mgr = _FeedMgr({"X": 5.0}, fresh=True)
+    assert b.get_ltp(["X"]) == {"X": 5.0}
+
+
+def test_get_ltp_falls_back_when_stale():
+    b = GrowwBroker()
+    b._client = _FakeClient()
+    b._feed_mgr = _FeedMgr({"X": 5.0}, fresh=False)
+    out = b.get_ltp(["X"])
+    assert out == {"X": 100.0}  # REST top-up, NSE_ prefix stripped

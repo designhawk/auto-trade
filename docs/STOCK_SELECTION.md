@@ -30,7 +30,7 @@
 
 ## Same-session boost + sector caps + re-rank
 
-* `session_boost` multiplies the base score by 0.85–1.20 from overnight gap direction and morning RVOL (volume so far vs time-proportional daily average). Applied to the top 60 by base score to bound API calls; **fail-open 1.0** pre-market or on any data error.
+* `session_boost` multiplies the base score by 0.85–1.20 from overnight gap direction and early day-range activity vs ATR (`day_range/prev ÷ atr`). Inputs come from ONE batched `get_day_ohlc` snapshot for the top 60 (2 calls, 50-cap chunked) — no per-symbol candle fetches. **Fail-open 1.0** pre-market or on any missing input.
 * `apply_sector_caps` (`sectors.py`, `MAX_SECTOR_POSITIONS=3`) prevents a one-sector watchlist.
 * `score_intraday` (5m bars: VWAP distance, 5m trend, RVOL, day-range position, RSI band) re-ranks watchlist + top-20 reserves at `RESELECT_TIMES`; held symbols are never evicted (re-ranking only affects future entries).
 

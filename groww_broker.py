@@ -127,6 +127,7 @@ class GrowwBroker(BrokerClient):
         """
         self._client: Optional[GrowwAPI] = None
         self._feed: Optional[GrowwFeed] = None
+        self._feed_mgr = None  # FeedManager, created by start_feed()
         self._use_api_key = use_api_key
         self._access_token: Optional[str] = None
         
@@ -198,16 +199,58 @@ class GrowwBroker(BrokerClient):
 
     def disconnect(self) -> None:
         """Clean up session and disconnect."""
+        self.stop_feed()
         if self._client:
             # Clean up feed if active
             if self._feed:
-                # Note: growwapi doesn't have explicit disconnect, 
+                # Note: growwapi doesn't have explicit disconnect,
                 # but we should unsubscribe from any active feeds
                 self._feed = None
-            
+
             self._client = None
             self._access_token = None
             print("[DISCONNECT] Disconnected from Groww API")
+
+    def start_feed(self, symbols: list) -> bool:
+        """
+        Subscribe symbols to streaming LTP (sync-poll mode; consume() is
+        never called because it blocks). Fail-open: returns False on any
+        error and get_ltp() keeps serving REST.
+        """
+        try:
+            from config import config
+            from feed_manager import FeedManager
+            from instruments import ensure_tokens
+
+            if not config.FEED_ENABLED:
+                return False
+            if self._client is None or self._feed is None or not symbols:
+                return False
+            tokens = ensure_tokens(
+                self._client, list(symbols), ttl_days=config.INSTRUMENTS_TTL_DAYS
+            )
+            if self._feed_mgr is None:
+                self._feed_mgr = FeedManager(self._feed)
+            ok = self._feed_mgr.resubscribe(list(symbols), tokens)
+            if ok:
+                missing = [s for s in symbols if s not in tokens]
+                if missing:
+                    print(f"[FEED] No tokens for {missing} - REST fallback for those")
+                print(f"[FEED] Streaming {len(self._feed_mgr._subscribed)} symbols")
+            return ok
+        except Exception as e:
+            print(f"[FEED] start failed, REST fallback: {e}")
+            return False
+
+    def stop_feed(self) -> None:
+        """Unsubscribe everything. Never raises."""
+        try:
+            if self._feed_mgr is not None:
+                self._feed_mgr.stop()
+        except Exception:
+            pass
+        finally:
+            self._feed_mgr = None
 
     @retry_on_error(max_retries=3, delay=1.0)
     def get_quote(self, symbol: str) -> Quote:
@@ -393,22 +436,38 @@ class GrowwBroker(BrokerClient):
     def get_ltp(self, symbols: list[str]) -> dict[str, float]:
         """
         Get Last Traded Price for multiple symbols.
-        
+
+        Serves from the streaming feed while fresh, REST-fetches anything
+        missing or when the feed is stale/inactive.
+
         Args:
             symbols: List of NSE trading symbols
-            
+
         Returns:
             Dictionary mapping symbol to LTP
         """
         if not self._client:
             raise RuntimeError("Not connected. Call connect() first.")
-        
+
         try:
-            # API caps at 50 symbols per call - chunk larger universes
-            prices: dict[str, float] = {}
             symbols = list(symbols)
-            for i in range(0, len(symbols), 50):
-                chunk = [f"NSE_{s}" for s in symbols[i:i + 50]]
+            prices: dict[str, float] = {}
+
+            # Streaming cache first (fresh ticks only)
+            if self._feed_mgr is not None and self._feed_mgr.active:
+                try:
+                    from config import config
+
+                    cached, _ = self._feed_mgr.get_cached(symbols)
+                    if self._feed_mgr.is_fresh(config.FEED_MAX_AGE_S):
+                        prices.update(cached)
+                except Exception:
+                    pass
+
+            # REST for anything the feed didn't cover (chunked at 50/call)
+            missing = [s for s in symbols if s not in prices]
+            for i in range(0, len(missing), 50):
+                chunk = [f"NSE_{s}" for s in missing[i:i + 50]]
                 response = self._client.get_ltp(
                     segment=self._client.SEGMENT_CASH,
                     exchange_trading_symbols=tuple(chunk)
@@ -420,9 +479,46 @@ class GrowwBroker(BrokerClient):
                     except (TypeError, ValueError):
                         continue
             return prices
-            
+
         except Exception as e:
             raise RuntimeError(f"Failed to get LTP: {e}")
+
+    @retry_on_error(max_retries=3, delay=1.0)
+    def get_day_ohlc(self, symbols: list[str]) -> dict:
+        """
+        Day OHLC snapshot per symbol in ONE batched call (up to 50/call).
+
+        Used for gap/session reads without per-symbol candle fetches.
+        Returns {symbol: {"open":.., "high":.., "low":.., "close":..}}.
+        Missing/unparseable symbols are omitted (callers fail-open).
+        """
+        if not self._client:
+            raise RuntimeError("Not connected. Call connect() first.")
+
+        try:
+            out: dict = {}
+            symbols = list(symbols)
+            for i in range(0, len(symbols), 50):
+                chunk = [f"NSE_{s}" for s in symbols[i:i + 50]]
+                response = self._client.get_ohlc(
+                    segment=self._client.SEGMENT_CASH,
+                    exchange_trading_symbols=tuple(chunk)
+                )
+                for k, v in (response or {}).items():
+                    try:
+                        sym = k.replace("NSE_", "")
+                        out[sym] = {
+                            "open": float(v["open"]),
+                            "high": float(v["high"]),
+                            "low": float(v["low"]),
+                            "close": float(v["close"]),
+                        }
+                    except (TypeError, ValueError, KeyError):
+                        continue
+            return out
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to get day OHLC: {e}")
 
     @property
     def is_connected(self) -> bool:
