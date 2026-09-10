@@ -281,6 +281,30 @@ def get_all_sessions() -> list[dict]:
         return [dict(row) for row in rows]
 
 
+def get_cash_flow() -> tuple:
+    """
+    Total cash outflow (buys) and inflow (sells), costs included.
+
+    BUY rows store gross value + cost columns; legacy rows (NULL costs,
+    net value) degrade gracefully to the same totals. Returns
+    (buy_outflow, sell_inflow) so cash == initial - outflow + inflow.
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                COALESCE(SUM(CASE WHEN side = 'BUY'
+                    THEN value + COALESCE(brokerage, 0) + COALESCE(stt, 0)
+                         + COALESCE(other_costs, 0) ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN side = 'SELL'
+                    THEN value - COALESCE(brokerage, 0) - COALESCE(stt, 0)
+                         - COALESCE(other_costs, 0) ELSE 0 END), 0)
+            FROM trades
+        """)
+        row = cursor.fetchone()
+        return float(row[0]), float(row[1])
+
+
 def backup_db(backup_dir: str = str(BACKUP_DIR)) -> str:
     """
     Create a timestamped backup of the database.

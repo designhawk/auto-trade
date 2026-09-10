@@ -28,7 +28,7 @@ import sqlite3
 from contextlib import contextmanager
 import json
 
-from db import get_db, get_trades_for_date, get_signals_for_date, get_all_sessions, DB_PATH
+from db import get_db, get_trades_for_date, get_signals_for_date, get_all_sessions, get_cash_flow, DB_PATH
 from config import config
 
 # Broker for live prices
@@ -303,12 +303,9 @@ def get_portfolio_summary():
                 (str(r[0]), int(r[1]), float(r[2])) for r in rows
             ]
 
-            # Calculate cash from actual trades
-            cursor.execute("SELECT SUM(value) FROM trades WHERE side = 'BUY'")
-            buy_total = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT SUM(value) FROM trades WHERE side = 'SELL'")
-            sell_total = cursor.fetchone()[0] or 0
-            cash = start_capital - buy_total + sell_total
+            # Calculate cash from gross flows + cost columns (exact)
+            buy_out, sell_in = get_cash_flow()
+            cash = start_capital - buy_out + sell_in
 
         # Value positions at live prices when available, entry prices otherwise
         live_prices, live = _live_prices([s for s, _, _ in open_positions])

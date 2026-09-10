@@ -143,7 +143,7 @@ class PaperPortfolio:
     
     def load_positions_from_db(self):
         """Load open positions from trades table on startup."""
-        from db import get_db
+        from db import get_db, get_cash_flow
         
         with get_db() as conn:
             cursor = conn.cursor()
@@ -180,14 +180,9 @@ class PaperPortfolio:
                 )
                 self.positions[symbol] = pos
         
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT SUM(value) FROM trades WHERE side = 'BUY'")
-            buy_total = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT SUM(value) FROM trades WHERE side = 'SELL'")
-            sell_total = cursor.fetchone()[0] or 0
-        
-        self.cash = self.initial_capital - buy_total + sell_total
+        # Cash from gross flows + cost columns (exact, incl. sell-side costs)
+        buy_out, sell_in = get_cash_flow()
+        self.cash = self.initial_capital - buy_out + sell_in
         log.info(f"Loaded {len(self.positions)} positions from trades table, cash: {self.cash}")
     
     def execute_buy(self, symbol: str, qty: int, price: float, stop_loss: float = None, take_profit: float = None) -> dict:

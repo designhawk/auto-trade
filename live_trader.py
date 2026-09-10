@@ -502,7 +502,8 @@ class LiveTrader:
                                 f"Cost: Rs.{result['total_cost']:,.0f}"
                             )
 
-                            # Save trade to database
+                            # Save trade to database (value is gross;
+                            # costs ride in their own columns)
                             insert_trade(
                                 {
                                     "timestamp": datetime.now().isoformat(),
@@ -510,7 +511,7 @@ class LiveTrader:
                                     "side": "BUY",
                                     "qty": result["qty"],
                                     "price": result["price"],
-                                    "value": result["total_cost"],
+                                    "value": result["value"],
                                     "pnl": 0,
                                     "pnl_pct": 0,
                                     "exit_reason": "SIGNAL_ENTRY",
