@@ -1,73 +1,61 @@
-# Architecture
+# The Big Picture (How the Parts Fit Together)
 
-Single-process orchestrator + sidecar API, glued by SQLite.
+If the other docs are chapters, this is the map on the inside cover. No code knowledge needed — just follow the journey of a single trading day.
+
+## The one-paragraph version
+
+Prices flow in from Groww through three pipes (history charts, quick price checks, live feed). Each morning the **selector** picks 30 stocks. All day, the **trader** asks the **strategy** "should we buy?", the **risk manager** "are we allowed?", and the **portfolio** executes with pretend money while tracking every cost. Everything is written to the **diary** (database), which the **dashboard**, **monitor**, and **report** read back to you. The **launcher** just starts the trader + dashboard together.
+
+## The journey of one trading day, step by step
 
 ```
-               ┌──────────────┐  OHLCV/LTP/quotes  ┌─────────────┐
-               │ GrowwBroker  │◄──────────────────►│ Groww Cloud │
-               │(growwapi+TOTP)│                    │  API        │
-               └──────┬───────┘                    └─────────────┘
-                      │ DataFrame [open high low close volume], IST
-        ┌─────────────▼──────────────┐
-        │ StockSelector (pre-market) │  daily ×100 bars → momentum score → watchlist (TOP_STOCKS)
-        └─────────────┬──────────────┘
-                      │ 5m ×50 bars per symbol, every 5 min
-        ┌─────────────▼──────────────┐      ┌──────────────┐
-        │ IntradayMomentumStrategy   │─Signal→│ RiskManager  │─RiskDecision(qty)→ PaperPortfolio
-        │ (BaseStrategy)             │      │ .approve()   │   execute_buy/sell + costs
-        └────────────────────────────┘      └──────────────┘         │
-                      │ on_bar also checks SL/TP/trailing on opens   │
-        ┌─────────────▼──────────────────────────────────────────────▼─┐
-        │ db.py (SQLite trading.db): signals / trades / sessions tables │
-        └─────────────┬────────────────────────────────────────────────┘
-                      │ reads
-        ┌─────────────▼──────────────┐      ┌──────────────┐
-        │ api.py (FastAPI :8002)     │◄────►│ monitor.py   │ terminal dashboard
-        └────────────────────────────┘      └──────────────┘
-        run.py spawns api.py + live_trader.py as subprocesses (logs/api.log, logs/trader.log)
-        logger.py → logs/{name}_YYYYMMDD.log ; logs.py tails them
+Morning                        All day, every 5 min              Evening
+───────                        ───────────────────              ───────
+Groww prices ──► SELECTOR ──► watchlist of 30 ──► TRADER ──► sells everything
+   (charts)       (grades +       (the squad)        │          (15:00–15:25)
+   feed on                             ┌─────────────┴──────────────┐
+                                       │  per stock: STRATEGY says  │
+                                       │  "buy?" → RISK says        │
+                                       │  "allowed?" → PORTFOLIO    │
+                                       │  pretend-buys, watches     │
+                                       │  stops/targets/partials    │
+                                       └─────────────┬──────────────┘
+                                                     ▼
+                                              DIARY (trading.db)
+                                              signals · trades · sessions
+                                                     │
+                    ┌────────────────────────────────┼───────────────────┐
+                    ▼                                ▼                   ▼
+              DASHBOARD website               MONITOR terminal      REPORT card
+              (watch it live)                 (quick glance)        (learn tonight)
 ```
 
-## Components
+## The cast (who does what)
 
-| File | Role | Depends on |
+| Part | Job in one line | If it breaks... |
 |---|---|---|
-| `live_trader.py` | `LiveTrader` lifecycle: `pre_market → on_bar loop → force_close_all → end_session`, portfolio valuation, session row | strategy, broker, risk, portfolio, selector, db |
-| `base_strategy.py` | `Signal` dataclass + `BaseStrategy` ABC | pandas |
-| `intraday_strategy.py` | `IntradayMomentumStrategy` | `BaseStrategy` |
-| `stock_selector.py` | `StockSelector` momentum ranker | `GrowwBroker` |
-| `risk_manager.py` | `RiskManager` + `RiskDecision` | `Signal` |
-| `paper_portfolio.py` | `PaperPortfolio`, `Position`, `Transaction` | `db` (load only) |
-| `groww_broker.py` | `GrowwBroker` | `BrokerClient`, `growwapi`, `pyotp` |
-| `broker_client.py` | `BrokerClient` ABC + `Quote` | pandas |
-| `db.py` | SQLite CRUD + backup/restore | sqlite3 |
-| `api.py` | Read-only FastAPI | `db`, `config` |
-| `run.py` / `monitor.py` / `logs.py` / `logger.py` | Launcher / dashboard / viewer / logging setup | subprocess, requests |
-| `config.py` | `Config` + `NSE_STOCKS` universe | `dotenv` |
-| `sectors.py` | `SECTOR_MAP` + `sector_of` (caps + attribution) | — |
-| `report.py` | Post-session review from `trading.db` | `db`, `sectors` |
-| `feed_manager.py` | Streaming LTP: subscribe/diff/cache/watchdog (sync-poll, fail-open) | `growwapi.GrowwFeed` |
-| `instruments.py` | Symbol→token map (disk cache + weekly refresh) | `pandas` |
-| `paths.py` | Project-root `DB_PATH`/`LOG_DIR`/`BACKUP_DIR` | `pathlib` |
-| `tests/` | pytest suite (temp-DB, broker fakes, pinned clock) | `pytest` |
+| **Launcher** (`run.py`) | Starts the trader + website together | Start pieces manually (`api.py`, `live_trader.py`) |
+| **Trader** (`live_trader.py`) | The conductor: morning prep, 5-min loop, evening shutdown | Nothing trades — check logs first |
+| **Selector** (`stock_selector.py`) | Picks the 30-stock squad + mid-morning swaps | Falls back to a default list, keeps going |
+| **Strategy** (`intraday_strategy.py`) | Proposes buys (7 strict checks) | No signals = quiet day, usually correct |
+| **Risk manager** (`risk_manager.py`) | Vetoes anything dangerous (10 gates) | Rejections logged with reasons — read them |
+| **Portfolio** (`paper_portfolio.py`) | Pretend wallet + costs + exits | Restart rebuilds from diary (safe defaults) |
+| **Broker link** (`groww_broker.py`) | Fetches prices; streaming feed with REST fallback | Degrades to slower data, never freezes |
+| **Diary** (`db.py` → `trading.db`) | Remembers everything, backs itself up | Restore from `backups/` |
+| **Dashboard/API** (`api.py`) | Website of live numbers | Trader keeps working without it |
+| **Monitor / Logs** | Terminal views into the diary | Cosmetic only — data is safe |
+| **Report** (`report.py`) | Evening report card | Re-run anytime; reads diary only |
+| **Config / Sectors / Paths** | Settings, sector map, file locations | Wrong settings = strange behavior; check `.env` |
 
-        ## Data flow (one `on_bar` tick)
+## Design choices worth knowing (and why)
 
-1. IST clock + `maybe_reselect()` (09:30/11:00 re-rank).
-2. For each open position (5m×50): update MFE/MAE → staged EOD wind-down (≥15:00) → trailing ratchet (tightened after 14:30) → 1R partial + breakeven move → scratch check → SL → TP. Every SELL writes costs + MFE/MAE via `_sell_row`.
-3. For each watchlist symbol not held (skip after 14:45 cutoff): fetch `5m×50` + `15m×60` → `generate_signals(df, df_15m)` → `insert_signal` (with approve/reject + `adjusted_qty`) → if approved `execute_buy` → `insert_trade(BUY)` with cost breakdown.
-4. `log_portfolio_status()` (cash, count, total, P&L vs initial).
+- **Read-only broker, always.** There is deliberately no code that can spend real money. Safety by absence, not by flag.
+- **One diary, many readers.** Trader writes; dashboard/monitor/report only read. They can never corrupt trading.
+- **Fail-open data, fail-closed money.** Missing price data → skip gracefully and keep going. Risky trade proposal → rejected by default. The system is optimistic about *information* and pessimistic about *money*.
+- **No overnight positions, ever.** Three layered exits (gradual → square-off → emergency) because overnight gaps are how beginners get destroyed.
+- **Everything local.** No cloud, no accounts, no subscriptions. Your data never leaves your computer.
 
-## Key design decisions
+## Beginner takeaways
 
-* **Broker is read-only by construction.** `BrokerClient` has no order methods; live money can't flow through this code path.
-* **SQLite as IPC.** Trader writes, API/monitor read. Simple, but no live position push — API reconstructs positions from `trades`.
-* **IST hardcoded.** Market window 9:15–15:25 in `config.py` + `pytz Asia/Kolkata` in trader/broker. Running the host clock in another TZ still works (explicit TZ), but DST-free IST is assumed.
-* **Fail-open watchlist.** If selection crashes, trader falls back to `universe[:20]`.
-* **Process model is launcher-local.** `run.py --stop/--status` only affect processes spawned by that same `Launcher` instance — not a real supervisor.
-
-## Extension points
-
-* New strategy → subclass `BaseStrategy`, inject into `LiveTrader` (`live_trader.py:627`).
-* New broker → implement `BrokerClient` (`broker_client.py`), pass to `LiveTrader`/`StockSelector`.
-* New risk rule → add a gate in `RiskManager.approve()` before sizing.
+- When confused, ask "which cast member owns this?" — every symptom traces to one row in the table above.
+- The architecture's lesson mirrors trading's lesson: boring reliability (backups, fallbacks, halts) beats cleverness. This bot is 20% strategy, 80% plumbing — and so is real trading success.

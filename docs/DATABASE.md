@@ -1,20 +1,28 @@
-# Database
+# Your Trading Diary (The Database, in Plain Words)
 
-`db.py` — SQLite (`trading.db`, `sqlite3.Row` factory) + `get_db()` context manager. Three tables, created by `init_db()` (auto-run in `LiveTrader.run`):
+Everything the bot thinks and does is written into one file on your computer: **`trading.db`**. No cloud, no accounts, no one else sees it. It has three notebooks inside:
 
-## Schema
+## The three notebooks
 
-* **`signals`** — every strategy firing: `timestamp, symbol, action, confidence, entry_price, stop_loss, take_profit, reason, approved, rejection_reason, adjusted_qty, strategy`. Indexes on `(symbol)`, `(timestamp)`.
-* **`trades`** — paper executions: `timestamp, symbol, side(BUY/SELL), qty, price, value, pnl, pnl_pct, exit_reason, session_id`, plus `mfe, mae` (R multiples at exit) and cost breakdown `brokerage, stt, other_costs, slippage_cost`. Exit reasons: `SIGNAL_ENTRY, STOP_LOSS, TAKE_PROFIT, SCALED_1R, SCRATCH, EOD_SCALE, FORCE_CLOSE_EOD`. Indexes on `(symbol)`, `(timestamp)`. New columns are added by `init_db()` migration (`PRAGMA table_info` guard), so old databases upgrade in place and legacy-shaped inserts still work.
-* **`sessions`** — one row per date (`UNIQUE(date)`): `start/end_capital, total_pnl, total_trades, winning_trades, losing_trades, max_drawdown_pct, sharpe_ratio, notes`. `insert_session` upserts on `date`. `max_drawdown/sharpe` are currently written as `0.0` (placeholders).
+1. **`signals` — every idea the bot ever had.**
+   Each row: date/time, stock, what it proposed, confidence, entry/stop/target prices, *why* (in readable English!), and whether the safety department approved or rejected it — with the rejection reason. This is gold for learning: filter rejected signals and you'll see exactly which safety rule keeps saving you.
 
-## Helpers
+2. **`trades` — every pretend trade actually taken.**
+   Buys and sells with quantity, price, profit/loss, *how* it exited (`STOP_LOSS`, `TAKE_PROFIT`, `SCALED_1R` for half-profit, `SCRATCH` for dead trades, `EOD_SCALE`/`FORCE_CLOSE_EOD` for end-of-day), plus best/worst moments (MFE/MAE) and the full cost breakdown. This notebook *is* your track record.
 
-`insert_signal/insert_trade/insert_session`, `get_trades_for_date / get_signals_for_date / get_session_summary / get_all_sessions (date DESC)`, `backup_db("backups")` → `trading_YYYYMMDD_HHMMSS.db` (run pre-market + end-session), `restore_db(path)`, `get_backup_list()`. `python db.py` inits tables.
+3. **`sessions` — one report card per day.**
+   Starting money, ending money, total profit, number of trades, wins vs losses. The daily `report.py` reads mostly from here + trades.
 
-## Notes
+## Backups (automatic)
 
-* DB file + `backups/` are git-ignored; `trading.db` ships absent — first run creates it.
-* Paths are anchored to the project root (`paths.DB_PATH`, `paths.BACKUP_DIR`), not the cwd — launching from any directory uses the same database and backup folder.
-* API/monitor are read-only consumers; no migrations — schema changes need manual `DROP`/recreate.
-* Session win/loss counting in `end_session` pairs sells to buys by symbol (approximate, not FIFO-matched).
+Before the morning session and after the evening close, the bot photocopies the whole diary into `backups/` with a timestamp. If you ever corrupt the database experimenting, grab yesterday's copy. Old databases upgrade themselves automatically when the bot starts (new columns appear without losing your history).
+
+## Looking at your own data (no coding needed)
+
+The easiest window is the dashboard (`python monitor.py`) and the report (`python report.py`). If you're curious enough to peek inside directly, any free "SQLite browser" app can open `trading.db` — try sorting `trades` by `pnl` to find your best and worst trades, then read their `reason` and `exit_reason` columns. That's a full trading lesson in 5 minutes.
+
+## Beginner takeaways
+
+- Real traders keep journals; yours is automatic. The habit of *reviewing* is what separates learning from gambling — schedule 10 minutes with the report every evening.
+- `trading.db`, `backups/`, and `.env` never leave your computer (they're excluded from GitHub). Back them up somewhere safe yourself now and then.
+- Files live next to the project no matter which folder you start the bot from — one diary, never two.

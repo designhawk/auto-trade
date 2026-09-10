@@ -1,28 +1,63 @@
-# Operations
+# Your Daily Routine (Running the Bot)
 
-## Launcher — `run.py`
+## The 2-minute morning start
 
-`Launcher` spawns `api.py` → `logs/api.log` and `live_trader.py` → `logs/trader.log` (`CREATE_NEW_PROCESS_GROUP` on Windows).
+```bash
+python run.py
+```
 
-* `python run.py` — API, wait 2s, trader; block until `Ctrl+C` → terminate/kill.
-* `python run.py --trader-only` — trader only, skips the API.
-* `python run.py --monitor` — API + trader, then `monitor.py --follow` in foreground; stops both on exit.
-* `--stop/--status` — only affect the current `Launcher`'s dict (fresh each invocation, so effectively no-ops across runs). To stop, `Ctrl+C` the launcher or kill PIDs; to inspect, use `monitor.py` / `http://localhost:8002/status`.
+That's the whole job. It starts two things: the **dashboard website** (http://localhost:8002) and the **trader** (the bit that watches prices and pretend-trades). Leave that window open all day. Press `Ctrl+C` in the evening to stop everything.
 
-## Trading loop — `live_trader.py`
+Want to watch along? Open a second terminal:
 
-`python live_trader.py [--live] [--capital N]`. `--live` prompts `CONFIRM` but execution stays paper (broker is read-only). Flow: `init_db → broker.connect (exit 1 on fail) → insert opening session row → pre_market → 5-min loop while IST < 15:25 (with re-ranks at RESELECT_TIMES) → force_close_all → end_session → disconnect`. `KeyboardInterrupt`/exception also force-closes first.
+```bash
+python monitor.py          # live dashboard: cash, open trades, today's profit
+python monitor.py --once   # one snapshot, then exit
+python logs.py trader -f   # the trader's live diary, line by line
+```
 
-Session timeline (IST): 9:00 pre-market rank → 9:15 open → 9:30/11:00 re-ranks → 14:30 trail tightening + force-scale ≥1R → 14:45 entry cutoff → 15:00 staged wind-down (½ qty/tick) → 15:20 square-off → 15:25 force-close backstop. `python report.py [--date YYYY-MM-DD]` prints the post-session review (P&L by exit, expectancy, MFE/MAE, costs, sectors, signals).
+## What a normal day looks like (IST)
 
-## Monitor — `monitor.py`
+| Time | The bot... | You... |
+|---|---|---|
+| ~9:00 | Photocopies yesterday's diary (backup), picks 30 stocks, subscribes to their live price feed | Start `run.py`, get chai |
+| 9:15–14:30 | Checks all 30 stocks every 5 min; buys breakouts, manages open trades | Nothing. Seriously — don't touch it. Watching every tick teaches anxiety, not skill. |
+| 9:30, 11:00 | Quietly swaps dull stocks for livelier ones | Nothing |
+| 14:30–15:20 | Tightens safety nets, stops new entries (14:45), sells down gradually | Start paying attention — this is when the day's result locks in |
+| 15:25 | Emergency sell-all if anything remains | Nothing left to do |
+| Evening | Writes report card | **This is your real job:** `python report.py` + 10 minutes of review |
 
-Polls `localhost:8002/health` + `/portfolio` and tails the most recently modified of `logs/live_trader_*.log`, `logs/trader.log`, `logs/api.log` — covering both launcher runs and direct runs. Modes: default refresh `-i 5`s, `--once`, `--follow` (raw tail).
+## The evening review (the habit that makes you better)
 
-## Logs — `logger.py` + `logs.py`
+```bash
+python report.py                # today
+python report.py --date 2026-09-10   # any past day
+```
 
-`get_logger(name)` → console + `logs/{name}_YYYYMMDD.log` (`[ts] [level] [name] msg`), handler-deduped. `TradeLogger` formats signal/trade/portfolio lines. View: `python logs.py [api|trader|dashboard|all] [-n 50] [-f] [--clear]` (targets `logs/{component}.log`, i.e. launcher files — use `monitor.py` for dated trader logs). `logs/` is git-ignored.
+Read in this order: (1) Total P&L — the score. (2) Win rate + profit factor — *how* you scored. (3) By exit reason — *where* the money came from/went. (4) MFE/MAE — what to tune next. (5) Costs — the quiet tax. (6) Rejected signals — what the safety rules caught. One insight per day, written down somewhere, beats any new feature.
 
-## Backups
+## When something looks wrong (troubleshooting for beginners)
 
-`backup_db()` copies `trading.db` → `backups/trading_YYYYMMDD_HHMMSS.db` pre-market and end-session. Restore: `db.restore_db(path)` / list via `get_backup_list()`. `backups/` is git-ignored since the `.gitignore` fix — old clones may still carry committed DBs; purge if needed.
+| Symptom | Most likely cause | Fix |
+|---|---|---|
+| Bot exits immediately on start | Wrong/missing Groww keys in `.env` | Re-check token + secret, no extra spaces |
+| Dashboard shows `live_prices: false` | Feed unreachable (internet/credentials) | Trading continues on backup data; fix net/keys |
+| "No log files found" | Nothing has run yet today | Start `run.py` first |
+| Numbers look frozen | Market closed (evenings/weekends/holidays) | Normal — the bot only works 9:15–15:25 on trading days |
+| First-ever start crashes | Old diary from an incompatible version | The bot auto-upgrades its database; if truly stuck, rename `trading.db` to reset (you lose history) |
+| Python says "no module named X" | Dependencies missing | `pip install -r requirements.txt` again |
+
+## The other commands (rarely needed)
+
+- `python run.py --trader-only` — trader without the dashboard website.
+- `python run.py --monitor` — everything plus a live log tail in the same window.
+- `python live_trader.py --capital 100000` — run the trader directly with custom pretend capital. (`--live` asks for typed CONFIRM but still only paper-trades — the read-only design guarantees it.)
+- `python logs.py [api|trader|all] [-n 50] [-f] [--clear]` — browse or clear old diaries.
+- `python -m pytest tests/ -q` — 41 self-tests. Run after any change you make to the code.
+- `python stock_selector.py` — tiny demo: ranks 5 famous stocks so you can see scoring work.
+
+## Beginner takeaways
+
+- Your two jobs: start it in the morning, review it in the evening. Everything between is the bot's job — hovering teaches nothing.
+- Never edit code mid-day to "fix" a losing day. Change settings in the evening, one at a time, and let paper results judge over weeks.
+- Weekends are for learning: re-read one doc file per weekend and one month of reports. That's a genuine trading education, free.

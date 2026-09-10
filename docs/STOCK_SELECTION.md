@@ -1,43 +1,42 @@
-# Stock Selection
+# How the Bot Picks Stocks Every Morning
 
-`stock_selector.py` — pre-market ranker plus mid-session re-ranker. `LiveTrader.pre_market()` calls `rank_stocks(universe, interval="1d", bars=100)` then `apply_sector_caps(ranked, TOP_STOCKS)`. Falls back to `universe[:20]` on error. `RESELECT_TIMES` (default 09:30, 11:00 IST) re-ranks via `score_intraday` without evicting held symbols.
+You can't watch 150 stocks at once — so every morning the bot narrows ~150 large NSE stocks down to a **watchlist of ~30**, then spends the day watching only those. Think of it as a morning shortlist, like a cricket selector picking the match-day squad.
 
-## Score (weights sum to 100%)
+## Step 1: Grade every stock on 5 subjects (daily charts)
 
-`rank_stocks` percentile-ranks each factor across the candidate set (ties averaged), so no hand-scaled factor dominates, then composites with the same weights and applies a same-session boost:
+Using the last ~100 days of daily prices, each stock gets graded on:
 
-| Factor | Weight | Raw input (percentiled) |
-|---|---|---|
-| Price vs EMA20 | 30% | `(close/EMA20−1)` mapped ±5% → 0–100 |
-| RSI(14, Wilder ewm) | 20% | desirability curve peaking at RSI 60 |
-| Volume ratio | 15% | 5-bar avg / 20-bar avg |
-| 5-day return | 20% | mapped ±5% → 0–100 |
-| Trend (SMA5 vs SMA20) | 15% | mapped ±3% → 0–100 |
+| Subject (weight) | Plain meaning |
+|---|---|
+| Price vs trend, 30% | Is it trading above its own 20-day average? Above = healthy. |
+| RSI energy, 20% | Best marks near RSI 60 (strong but not crazy); punished if overheated (>70) or lifeless (<30). |
+| Volume, 15% | Is unusually heavy trading accompanying the move? |
+| 5-day return, 20% | Has it actually been going up this week? |
+| Trend shape, 15% | Is the short average above the longer average (uptrend shape)? |
 
-| Factor | Weight | Formula |
-|---|---|---|
-| Price vs EMA20 | 30% | `clip((close/EMA20−1)*100 +5)/10*100` (±5% maps to 0–100) |
-| RSI(14, Wilder ewm) | 20% | peaks at RSI 60 (100 pts), 50–70 band rewarded, >70 penalized ×3, <30 → 10, 30–50 ramp |
-| Volume ratio | 15% | `mean(vol[-5:])/mean(vol[-20:]) /3*100` (5-bar avg smooths opening spike) |
-| 5-day return | 20% | `clip((ret+5)/10*100)` (±5% maps to 0–100) |
-| Trend (SMA5 vs SMA20) | 15% | `clip((SMA5/SMA20−1)*100 +3)/6*100` (±3% maps to 0–100) |
+Two instant disqualifiers, no matter the grades: **too jumpy or too sleepy** (daily wiggle outside 0.3–4%), and **too thinly traded** (under ~2 lakh shares/day average — beginners should avoid illiquid stocks where you can't exit cleanly).
 
-## Hard filters (score → 0 with `error` reason)
+Clever bit: instead of fixed pass marks, stocks are graded **on a curve** (percentile ranks). If the whole market is sleepy one morning, the *relatively* best still float up — no single factor can dominate just because its numbers run hot.
 
-* Volatility: `ATR_Wilder(14)/price` must be 0.3–4% (NSE intraday bounds).
-* Liquidity: 20-bar avg volume ≥ 2,00,000.
-* Quality: composite ≥ 10.
+## Step 2: Adjust for *this* morning (gap + early activity)
 
-## Same-session boost + sector caps + re-rank
+Daily grades describe yesterday. So for the top ~60 candidates, the bot takes one fresh snapshot of *today* (a single batched request, not 60 separate ones) and adjusts scores ±15%:
 
-* `session_boost` multiplies the base score by 0.85–1.20 from overnight gap direction and early day-range activity vs ATR (`day_range/prev ÷ atr`). Inputs come from ONE batched `get_day_ohlc` snapshot for the top 60 (2 calls, 50-cap chunked) — no per-symbol candle fetches. **Fail-open 1.0** pre-market or on any missing input.
-* `apply_sector_caps` (`sectors.py`, `MAX_SECTOR_POSITIONS=3`) prevents a one-sector watchlist.
-* `score_intraday` (5m bars: VWAP distance, 5m trend, RVOL, day-range position, RSI band) re-ranks watchlist + top-20 reserves at `RESELECT_TIMES`; held symbols are never evicted (re-ranking only affects future entries).
+- **Overnight gap:** opened 2% higher than yesterday's close? Small bonus — the market already likes it today. Opened sharply lower? Small penalty — don't catch a falling knife with a long-only strategy.
+- **Early activity:** how much of a normal day's price range is already used up, relative to its typical wiggle. A stock that's already moving with purpose scores higher than one that's flat.
 
-## Cost note
+If the morning data is missing (before the open, API hiccup), scores stay unchanged — a missing reading never disqualifies a stock.
 
-`select_top_stocks` fetches `bars=100` daily candles **per symbol** sequentially (~150 API calls pre-market, logging every 10). Failures are silently skipped. Budget Groww rate limits / pre-market time accordingly; `bars` also doubles as indicator warmup (EMA20/RSI14/ATR14 need it).
+## Step 3: Don't put all eggs in one basket (sector caps)
 
-## Smoke test
+Even if 10 banks top the list, the bot takes at most **3 per sector**. Ten bank stocks aren't ten independent bets — one bad banking headline sinks all of them together. Diversification is forced, not suggested.
 
-`python stock_selector.py` connects via `GrowwBroker`, ranks `["RELIANCE","TCS","INFY","HDFCBANK","ICICIBANK"]` top-3 and prints score/price/RSI/vol/EMA-distance.
+## Step 4: Re-check at 9:30 and 11:00 (the mid-morning reality check)
+
+The morning list is a prediction; the market is the answer. Twice mid-morning the bot re-scores the watchlist on live 5-minute action (distance from VWAP, fresh trend, live volume, RSI) and swaps dull names for livelier reserves. **One golden rule: stocks you already own are never evicted** — re-ranking only changes *future* entries, never disturbs open trades.
+
+## Beginner takeaways
+
+- Selection is about *where to look*, not *what will win*. A great list with a bad exit plan still loses money.
+- Watch the daily report's sector section: if one sector keeps winning, the market is telling you something about regimes.
+- The 09:30 re-rank exists because the first 15 minutes of the Indian market are notoriously noisy — beginners lose a lot of money trading the open. The bot mostly watches it.

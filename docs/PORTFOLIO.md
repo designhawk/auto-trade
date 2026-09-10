@@ -1,27 +1,39 @@
-# Paper Portfolio
+# Pretend Money, Real Costs (How the Portfolio Works)
 
-`paper_portfolio.py` — `PaperPortfolio` simulates fills with the NSE equity-intraday cost schedule. No persistence of its own; it **rehydrates from `trades`** on startup (`load_positions_from_db`, `live_trader.py`).
+The **paper portfolio** is your virtual wallet. It starts with pretend cash (default ₹10,00,000), "buys" and "sells" when told to, and tracks every rupee — including the unglamorous part beginners ignore: **costs**.
 
-## Costs (verify against your broker's contract note)
+## A trade, with all the warts (example)
 
-Per fill: brokerage 0.03% each side, STT 0.025% **sell-side only**, stamp 0.002% buy-side, exchange ~0.00297% + SEBI ₹10/crore + 18% GST (grouped as `other_costs`), plus adverse slippage sampled U[0, 0.04%] per fill (seed via `SLIPPAGE_SEED` for reproducibility). All rates are constructor params fed from `config.py`. Every `execute_*` result and `trades` row carries the full breakdown (`brokerage, stt, other_costs, slippage_cost`).
+You buy **10 shares at ₹1,000** (₹10,000 position) and later sell at ₹1,020:
 
-## Positions & transactions
+| Line item | Buy | Sell | Why it exists |
+|---|---|---|---|
+| Share value | ₹10,000 | ₹10,200 | The obvious part |
+| Brokerage 0.03% | ₹3.00 | ₹3.06 | Your broker's fee, both sides |
+| STT 0.025% | ₹0 | ₹2.55 | Government tax — **sell side only** for intraday |
+| Stamp + exchange + SEBI + GST | ~₹3.50 | ~₹3.60 | Tiny fees that add up over hundreds of trades |
+| Slippage | ~₹0–4 | ~₹0–4 | You never get exactly the price on screen; the bot rolls dice between 0 and 0.04% against you, like real markets do |
+| **You actually pay / receive** | **~₹10,007** | **~₹10,191** | |
 
-* `Position(symbol, qty, avg_price, side="LONG", entry_time, stop_loss, take_profit, trailing_stop=True, trail_activation_pct=2%, trail_distance_pct=1.5%, scaled=False, initial_risk, mfe=0, mae=0)`. `initial_risk` (entry avg − entry SL) is the R reference for MFE/MAE, partials, and scratch; `scaled` marks the 1R partial as taken.
-* `Transaction(timestamp, symbol, side, qty, price, value, brokerage, stt, net_value)`.
-* `execute_buy(symbol, qty, price, stop_loss?, take_profit?)`: slippage worsens price `×(1+0.02%)`, cost = `gross + brokerage(0.03%) + STT(0.025%)`; needs `net ≤ cash`; averages into existing position; defaults SL/TP to ±2% if not passed (trader always passes real ones).
-* `execute_sell(symbol, qty, price)`: price `×(1−0.02%)`, proceeds = `gross − brokerage − STT`; `net_pnl = proceeds − avg×qty`, `pnl_pct` on cost basis; deletes position at zero.
-* `get_portfolio_value({symbol: price})` → cash, positions_value, total, return %, unrealized P&L, per-position detail, cumulative brokerage/STT.
+Real profit: **~₹184**, not the ₹200 the share prices suggest. Now imagine 200 trades a month — costs quietly eat thousands. *This* is why the report has a Costs section, and why frequent trading is a beginner trap. (Rates follow standard NSE intraday norms — check them against a real broker contract note before trusting absolute rupee figures.)
 
-## Reload semantics (important)
+## How exits work (what happens after you own something)
 
-`load_positions_from_db` nets BUYs against SELLs per symbol (`net_qty > 0` stays open) at the buy-weighted average price (ignores slippage/costs), with synthetic `SL = −2% / TP = +2%`, trailing on — signal-level SL/TP can't be recovered (the trades table doesn't store them). Cash is recomputed as `initial − ΣBUY.value + ΣSELL.value`. Costs tracked in-memory reset each restart. Restart mid-day only via the same DB.
+- **Stop-loss / take-profit:** the two guardrails from the buy plan. Hit either → sell everything in that stock.
+- **Half-profit at +1R ("SCALED_1R"):** when profit reaches 1× the original risk, the bot sells **half** and moves the stop-loss to your buying price (**breakeven**). Now the remaining half *cannot lose money*. This single habit smooths results enormously.
+- **Trailing stop:** as profit grows past +2%, the safety net ratchets *up* behind the price — locking in gains if the stock turns. After 14:30 it tightens (less time left = less patience).
+- **Scratch:** if a trade sits around doing nothing for ~1 hour (12 bars) without reaching even half its risk in profit, the bot sells and moves on. Dead money is usually wrong money.
+- **End-of-day wind-down:** from 15:00 the bot sells down gradually; 15:20 everything goes; 15:25 is the emergency backup. You never wake up owning something overnight.
 
-## Trailing stop (driven by trader, not portfolio)
+## MFE and MAE — the two most educational numbers
 
-In `on_bar`, once `(price−avg)/avg ≥ activation` (2%, trail distance halved after 14:30), SL ratchets to `price×(1−distance)` whenever that exceeds the current SL — evaluated before the SL/TP checks each bar. After the 1R partial, SL moves to breakeven (`max(SL, avg)`). Portfolio just stores the mutated SL.
+For every closed trade the bot records:
 
-## Helpers
+- **MFE (best moment):** how high did profit *ever* reach, in units of your risk? MFE of 2.5R means "at its best, this trade was up two-and-a-half times what you risked."
+- **MAE (worst moment):** how deep did it dip against you?
 
-`get_positions / has_position / get_position_qty / get_transactions / get_summary`. Costs are class constants overridable at construction; trader uses `PaperPortfolio(initial_capital)` defaults rather than config cost values — keep them in sync manually.
+Why beginners should love these: if your winners often touch 3R but you sell at 2R, your targets are too shy. If your stop-outs frequently had +1R of profit first, your safety net is too loose. The report's MFE/MAE section literally tells you how to tune the machine.
+
+## One quirk to know
+
+If you restart the bot mid-day, it rebuilds open positions from its diary — but fine details (like "already took half-profit") are reset to safe defaults. Prefer starting it once in the morning and leaving it alone.

@@ -1,20 +1,29 @@
-# Broker
+# Where Live Prices Come From (Groww, in Plain Words)
 
-Abstract `BrokerClient` (`broker_client.py`) + Groww implementation (`groww_broker.py`, `growwapi` + `pyotp`). **Read-only**: quotes, candles, positions, holdings, LTP. No order methods exist on purpose.
+The bot needs live prices to think with. It gets them from **Groww** (a real Indian stockbroker) through their official developer pipe (API). Two things to understand deeply:
 
-## Interface
+**1. It can only LOOK, never TOUCH.** The connection is deliberately read-only: prices, charts, holdings — yes. Placing orders — the code for that doesn't even exist here. Even the scary-sounding `--live` flag only changes a label. Your real Groww money cannot be spent by this project. That's a design choice, not an accident.
 
-`connect() -> bool`, `disconnect()`, `get_quote(symbol) -> Quote(symbol, ltp, volume, bid, ask, timestamp)`, `get_ohlcv(symbol, interval, bars) -> DataFrame[open high low close volume]` (IST index), `get_positions()`, `get_holdings()`, `get_ltp(symbols) -> {symbol: price}`. Swap brokers by implementing this ABC and injecting into `LiveTrader`/`StockSelector`.
+**2. You need free API credentials.** In your Groww account settings there's a Cloud API Keys page. The recommended login uses a **TOTP token + secret** (the same rotating-code idea as Google Authenticator — it never expires, unlike the API-key method which needs daily approval). You paste these into your `.env` file once. Never share that file — it's your account's key.
 
-## Groww details
+## The three ways prices arrive (and why three)
 
-* **Auth:** default TOTP — `GROWW_TOTP_TOKEN` (API key) + `GROWW_TOTP_SECRET` → `pyotp.TOTP(secret).now()` → `GrowwAPI.get_access_token(api_key, totp)`. Alt `GrowwBroker(use_api_key=True)` uses `GROWW_API_KEY` + `GROWW_API_SECRET`. `connect()` verifies with `get_holdings_for_user(timeout=5)`; `disconnect()` drops client/feed. Token endpoint is limited to 150 requests/24h — we authenticate once per process.
-* **Candles:** `get_historical_candles` (the older `get_historical_candle_data` is deprecated upstream) with `groww_symbol="NSE-<SYMBOL>"` and `CANDLE_INTERVAL_*` constants (`"1m 2m 3m 5m 10m 15m 30m 1h 4h 1d 1w 1mo"` all supported — verified against the installed SDK). Per-request windows: 1–5m → 30d, 10/15/30m → 90d, 1h+ → 180d; our fetches (≤2d intraday, 100 daily bars) sit well inside. New rows are `[iso_timestamp, o, h, l, c, vol, oi?]` (IST wall time); `candles_to_df()` also accepts legacy epoch rows. Intraday ranges start at 9:15 of the most recent weekday (up to 7 days back); daily+ ranges are `bars × unit` lookback. Returns last `bars` candles, IST-indexed.
-* **Day snapshot:** batch `get_ohlc` (`NSE_` symbols, auto-chunked at the 50-call cap) → `{symbol: {open, high, low, close}}`, unparseable symbols omitted. Powers the selector's gap screen in 2 calls instead of ~60.
-* **Streaming feed (opt-in, fail-open):** `GrowwBroker.start_feed(symbols)` subscribes LTP via `FeedManager` (sync-poll mode — `consume()` is never called because it blocks). Subscriptions need **exchange tokens**, resolved by `instruments.ensure_tokens()` from a disk-cached map (`instruments.csv`, refreshed weekly via `get_all_instruments()`). `get_ltp()` serves feed ticks while fresh (`FEED_MAX_AGE_S`, default 60s) and REST-fetches anything missing/stale — a dead socket degrades to polling, never halts trading. `stop_feed()`/`disconnect()` unsubscribe. Watchlist (re)subscribes at pre-market and every re-rank.
-* **Quote:** `last_price/volume/bid_price/offer_price/depth{buy,sell:[{price,quantity}]}`. Parser tolerates missing `depth` and empty books (falls back to LTP).
-* **Rate limits (Live Data: 10/s, 300/min):** worst tick is ~70 calls (positions + 30×(5m+15m) + LTP batch); pre-market ~210 sequential calls — comfortably inside. No client-side throttle; `@retry_on_error(3, backoff 1s×attempt)` on quote/candles.
-* **Resilience:** all failures raise `RuntimeError("...: {e}")` — callers (`on_bar`, selector) catch-and-continue per symbol.
-* **Untapped:** websocket `Feed` market-depth/order-update channels — LTP streaming is wired; depth and order updates are future work.
+| Pipe | What it does | Beginner analogy |
+|---|---|---|
+| **Candle history** (the workhorse) | Downloads past price charts: every 5-minute bar, 15-minute bar, or daily bar for a stock | Ordering yesterday's newspapers to study |
+| **LTP batch** (the quick check) | "What are these 30 stocks worth *right now*?" — one request, up to 50 answers | One phone call asking 30 prices |
+| **Streaming feed** (the live wire) | Stays subscribed to your watchlist and receives price ticks as they happen | A ticker tape running on your desk |
 
-Requires `growwapi pyotp pytz pandas requests`. Install: `pip install growwapi pyotp` (or full `requirements.txt`).
+The bot prefers the live wire, but with a strict rule: ticks must be **fresh** (under ~60 seconds old). Stale wire? It silently falls back to quick-check calls. A dead internet connection degrades the bot to slower data — it never freezes or hallucinates prices. Subscriptions follow your watchlist automatically (morning list + mid-morning swaps), and everything unsubscribes cleanly on shutdown.
+
+One technical footnote you'll appreciate later: the exchange identifies stocks by **numbers** (tokens like `2885`), not names like RELIANCE. A small cached map translates between them, refreshed weekly — you never touch it.
+
+## Limits (why the bot is polite)
+
+Groww allows ~300 data requests per minute. The bot's busiest moment uses ~70, mornings ~210 spread over minutes. Well within limits — it will never get your key banned. Price charts come with per-request history caps (e.g., 30 days of 5-minute bars), and the bot's requests sit comfortably inside them.
+
+## Beginner takeaways
+
+- If prices ever look "stuck," the cause is almost always credentials (expired/typo'd key) or no internet — check those before anything exotic.
+- The read-only design is your safety blanket. Any trading bot you *ever* run with real money should earn this level of paranoia first.
+- Requires `growwapi pyotp pytz pandas requests` — all installed automatically by `pip install -r requirements.txt`.

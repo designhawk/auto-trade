@@ -1,135 +1,103 @@
-# auto-trade — NSE Intraday Paper Trading Bot
+# auto-trade — Learn Intraday Trading With a Paper-Trading Bot (NSE)
 
-Automated intraday trading system for NSE (India) using Groww market data, a 5-minute momentum breakout strategy, strict risk management, and paper-trade execution with realistic costs. Long-only, intraday-only (no overnight positions).
+A robot that **pretends to trade** Indian stocks (NSE) during market hours so you can learn how intraday trading works — **without risking a single rupee**. It uses live market prices, follows a fixed set of rules, and keeps a full diary of everything it did so you can review and learn.
 
-> **Disclaimer:** Educational project. Not financial advice. Intraday trading in India involves STT, brokerage, slippage, and substantial risk of loss. Paper-trade thoroughly before risking real capital. Order placement via broker API is intentionally disabled — this repo is read-only market data + simulation.
+> **Please read this first:** This is a learning tool, **not financial advice**, and it has **not been proven to make money**. Intraday trading is risky — most beginners lose money doing it for real. This bot only *simulates* trades (called **paper trading**). It cannot place real orders, even if you ask it to.
 
-## How it works
+## What does it actually do?
 
-```
-9:00  pre_market()     → rank ~150-stock universe on daily momentum, pick TOP_STOCKS (default 30)
-9:15–15:25 on_bar()    → every 5 min, for each watchlist stock:
-                           fetch 5m OHLCV → IntradayMomentumStrategy → Signal
-                           → RiskManager.approve() → PaperPortfolio.execute_buy()
-                           + check SL / TP / trailing stop on open positions
-15:25  force_close_all() → square off everything (no overnight risk)
-      end_session()     → write session row to SQLite + backup DB
-```
+Think of it as a very disciplined trainee trader that works for you every market day:
 
-* **Universe:** `config.NSE_STOCKS` (~150 NSE cash symbols, verified against Groww).
-* **Selection:** daily-factor rank (percentiled, no hand-scale domination) + same-session gap/activity boost from ONE batched snapshot, sector caps (`sectors.py`), mid-morning re-ranks (09:30/11:00 IST, never evicts held).
-* **Data:** `GrowwBroker` (`growwapi` + TOTP auth), IST timezone, retry ×3. Streaming LTP feed (sync-poll, 60s freshness watchdog, REST fallback) + batched day-OHLC snapshots.
-* **Strategy:** `IntradayMomentumStrategy` — 20-bar high breakout + 5-bar avg volume + price > 20-EMA + RSI 30–75 + 15m trend alignment + above session VWAP. ATR(14)×1.5 or 5-bar low for SL, 2:1 target, max SL 2.5%, cooldown, `volatility_pct` on every signal.
-* **Risk (per signal):** 2% capital at risk scaled by volatility targeting (0.5–1.5×) and confidence (0.5–1×), halved past the soft-throttle line; max 8% per position, max 8 open, 6% portfolio heat cap, daily loss halt 3%, all-time drawdown breaker 10%, ₹2L cash reserve, volatility filter 0.3–4%, min R:R 2.0.
-* **Exits:** half at 1R + SL-to-breakeven, trailing (tightened after 14:30), scratch after 12 stagnant bars, staged EOD wind-down from 15:00, square-off 15:20, force-close backstop 15:25.
-* **Costs (simulated):** brokerage 0.03% + STT 0.025% sell-only + stamp/exchange/SEBI/GST + sampled adverse slippage — full breakdown stored per trade.
-* **Storage:** SQLite `trading.db` — `signals`, `trades` (+MFE/MAE + costs, auto-migrated), `sessions` tables + timestamped `backups/`.
-* **Observability:** FastAPI (`:8002`, `live_prices` flags) + terminal `monitor.py` + `report.py` daily review + daily rotating logs in `logs/`.
+- **Morning (~9:00):** It looks at ~150 large Indian stocks and picks the ~30 showing the strongest recent momentum (rising price + healthy trading activity).
+- **During market hours (9:15–15:25):** Every 5 minutes it checks each picked stock. If a stock suddenly jumps above its recent highest price *with strong volume* and passes 6 more safety checks, the bot "buys" it with virtual money.
+- **After buying:** It watches the stock. If the price falls to a pre-decided danger level (**stop-loss**), it sells to limit the damage. If it rises to the profit goal (**take-profit**), it sells and banks the virtual profit. It also takes half-profit midway and gives up on stocks that go nowhere (**scratch**).
+- **End of day (15:00–15:25):** It sells everything. It never holds stocks overnight, so a bad overnight news event can never hurt it.
+- **After market close:** It writes you a **report card** — profit/loss, win rate, costs paid, what worked and what didn't.
 
-Docs: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/STRATEGY.md`](docs/STRATEGY.md) · [`docs/STOCK_SELECTION.md`](docs/STOCK_SELECTION.md) · [`docs/RISK_MANAGEMENT.md`](docs/RISK_MANAGEMENT.md) · [`docs/PORTFOLIO.md`](docs/PORTFOLIO.md) · [`docs/BROKER.md`](docs/BROKER.md) · [`docs/DATABASE.md`](docs/DATABASE.md) · [`docs/API.md`](docs/API.md) · [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) · [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
+All of this is recorded in a small database file on your computer, and you can watch it live on a dashboard or read the daily report.
 
-## Quick start
+## Quick words you'll see everywhere (mini-glossary)
 
-Requirements: Python ≥ 3.10, Groww Cloud API credentials (TOTP token + secret).
+| Word | What it means |
+|---|---|
+| **Paper trading** | Pretend trading with virtual money but real prices. Mistakes cost you nothing. |
+| **P&L** | Profit & Loss — how much money you made or lost. |
+| **Stop-loss (SL)** | A pre-decided price where you sell to stop a small loss becoming a big one. Example: buy at ₹100, stop-loss at ₹98 = you risk ₹2 per share. |
+| **Take-profit (TP)** | A pre-decided price where you sell to lock in profit. |
+| **Risk-reward (R:R)** | Comparing what you risk vs what you aim to gain. Risk ₹2 to make ₹4 = 1:2. This bot wants at least 1:2. |
+| **Brokerage / STT / slippage** | The unavoidable costs of trading: broker's fee, government tax, and the tiny price difference between what you see and what you get. They eat into profits on every trade. |
+| **VWAP** | The day's average traded price (weighted by volume). Think of it as the "fair price so far today" — buying above it means paying more than average. |
+| **RSI / ATR / EMA** | Standard chart indicators: RSI = is the stock overheated or cold; ATR = how much it normally wiggles (volatility); EMA = the smoothed trend direction. |
+| **Drawdown** | How far your money has fallen from its highest point. A 10% drawdown on ₹10L = you're down to ₹9L. |
+| **Cooldown** | After the bot trades a stock once, it waits a while before trading it again (avoids over-trading the same name). |
+
+## A day in the life of the bot
+
+| Time (IST) | What happens | What it means for you |
+|---|---|---|
+| ~9:00 | Picks the 30 most promising stocks | Your watchlist for the day is ready |
+| 9:15 | Market opens, checking starts | Nothing for you to do — just watch if you like |
+| 9:30, 11:00 | Re-checks the list, swaps out dull stocks | The bot adapts to how the morning actually played out |
+| 14:30 | Tightens safety nets on open trades | Late-day caution: less time left to recover |
+| 14:45 | Stops opening new trades | No last-minute gambles |
+| 15:00–15:20 | Gradually sells everything | Goes home flat, no overnight risk |
+| 15:25 | Emergency sell-all (backup) | Guarantees nothing is held overnight |
+| After close | Writes your report card | Read it with `python report.py` |
+
+## Getting started
+
+You need: a computer with **Python 3.10 or newer**, and free **Groww API credentials** (used only to *read* live prices — the bot cannot trade with them).
 
 ```bash
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env → GROWW_TOTP_TOKEN, GROWW_TOTP_SECRET, INITIAL_CAPITAL, IS_LIVE=false
+# open .env in any text editor and fill in your Groww details
+# (GROWW_TOTP_TOKEN and GROWW_TOTP_SECRET)
 
-python -c "import db; db.init_db()"   # optional, live_trader does this anyway
-python run.py                          # API (:8002) + trader
+python run.py
 ```
 
-Open in separate terminals:
+That's it — the bot starts its website (for the dashboard) and the trader. In other terminals you can run:
 
-```bash
-python monitor.py          # live dashboard (or --follow / --once)
-python logs.py trader -f   # tail trader logs
-```
-
-FastAPI docs: http://localhost:8002/docs
-
-## Commands
-
-| Command | Description |
+| Command | What it does |
 |---|---|
-| `python run.py` | Start API + trader (default). `Ctrl+C` stops both |
-| `python run.py --trader-only` | Trader only, no API |
-| `python run.py --monitor` | API + trader + live log follow |
-| `python run.py --stop` / `--status` | Stop / status (current process only) |
-| `python live_trader.py` | Paper trade directly (`--live` asks for `CONFIRM`, still paper-executes — broker is read-only) |
-| `python live_trader.py --capital 1000000` | Override starting capital |
-| `python monitor.py [--follow] [--once] [-i 5]` | Terminal dashboard / log tail / snapshot |
-| `python report.py [--date YYYY-MM-DD]` | Post-session review (expectancy, MFE/MAE, costs, sectors) |
-| `python -m pytest tests/ -q` | Unit suite (22 tests, temp DBs, no broker needed) |
-| `python logs.py [api\|trader\|dashboard\|all] [-n 50] [-f] [--clear]` | Log viewer |
-| `python -c "import db; db.init_db()"` | Init SQLite tables |
-| `python stock_selector.py` | Smoke-test selector on 5 symbols |
+| `python run.py` | Start everything (website + trader). Press `Ctrl+C` to stop. |
+| `python monitor.py` | Live text dashboard — cash, open trades, today's profit. |
+| `python logs.py trader -f` | Watch the trader's diary in real time. |
+| `python report.py` | Yesterday's/today's report card (profit, win rate, costs, lessons). |
+| `python -m pytest tests/ -q` | Self-check: 41 automated tests proving the parts work. |
 
-## Configuration
+Dashboard in your browser: http://localhost:8002/docs
 
-All in `.env` → `config.Config` (`config.py`). Key knobs:
+## The honest money talk
 
-| Var | Default (code) | `.env.example` | Meaning |
-|---|---|---|---|
-| `INITIAL_CAPITAL` | 10,00,000 | 20,00,000 | Starting paper capital (`live_trader.py --capital` overrides) |
-| `IS_LIVE` | `false` | `false` | Kept `false` — broker has no order methods |
-| `TOP_STOCKS` / `MIN_VOLUME` | 30 / 5,00,000 | — / — | Watchlist size / selector pre-filter |
-| `LOOKBACK` / `VOLUME_MULTIPLIER` / `COOLDOWN_BARS` | 20 / 1.5 / 15 | 20 / 1.5 / 10 | Strategy breakout window, volumeGate, per-symbol cooldown |
-| `MIN_RISK_REWARD` / `MAX_STOP_LOSS_PCT` | 2.0 / 2.5% | 2.0 / 3% | Enforced in strategy *and* risk manager |
-| `MAX_POSITION_PCT` / `MAX_OPEN_POSITIONS` | 8% / 8 | 10% / 10 | Position cap + concurrency cap |
-| `DAILY_LOSS_LIMIT_PCT` / `MAX_DRAWDOWN_PCT` | 3% / 10% | 2% / 5% | Daily halt / all-time-peak breaker |
-| `MIN_CASH_RESERVE` | 2,00,000 | 1,00,000 | Trading halts below this cash |
-| `BROKERAGE_PCT` / `STT_PCT` / `SLIPPAGE_MAX_PCT` | 0.03% / 0.025% sell-only / 0.04% sampled | same | Intraday schedule (+stamp/exchange/SEBI/GST); per-trade breakdown stored |
-| `API_PORT` | 8002 | 8002 | FastAPI port |
-| `GROWW_TOTP_TOKEN` / `GROWW_TOTP_SECRET` | — (required) | placeholder | TOTP auth (recommended). Alt: `GROWW_API_KEY` + `GROWW_API_SECRET` with `GrowwBroker(use_api_key=True)` |
+- **Costs are real, even on paper.** Every pretend trade pays pretend brokerage, taxes, and slippage — exactly to teach you that frequent trading bleeds money. Read any report's "Costs" section and notice how much of the gross profit they eat.
+- **Defaults assume ₹10–20 lakh capital** with up to 8 open trades. Don't compare its rupee profits to your own savings — compare *percentages* and *win rate*.
+- **Capital protection rules are strict on purpose:** it risks ~2% per trade, stops the day at −3%, and refuses to trade if total open risk crosses 6%. These numbers exist to teach you the #1 beginner lesson: *surviving matters more than winning*.
+- **Past paper profit ≠ future real profit.** Prices here are real, but pretend fills are always kinder than real ones (no queues, no market impact, no emotions).
 
-Market hours are hardcoded IST 9:15–15:25 (`config.py`). DB path `trading.db`, backups in `backups/`. Full reference: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
+## How your money is protected (the short version)
 
-> Note: code defaults and `.env.example` disagree on a few values (capital, SL, loss limits). `.env` wins at runtime. Align them before sharing results.
+Full detail in [`docs/RISK_MANAGEMENT.md`](docs/RISK_MANAGEMENT.md). The 10-second version: no single trade can lose more than ~2%, no day can lose more than 3%, the whole account halts at a 10% fall from its peak, and at least ₹2 lakh cash is always kept aside untouched.
 
-## Project structure
+## Where to read next
 
-```
-run.py                Launcher (spawns api.py + live_trader.py, writes logs/api.log, logs/trader.log)
-live_trader.py        Orchestrator: pre_market → on_bar loop (5 min) → force_close → end_session
-intraday_strategy.py  IntradayMomentumStrategy (BaseStrategy impl, 15m + VWAP gates)
-base_strategy.py      Signal dataclass + BaseStrategy ABC (generate_signals, required_bars)
-stock_selector.py     Pre-market ranker + intraday re-ranker (percentiled, boosted, capped)
-sectors.py            NSE sector map (caps + attribution)
-feed_manager.py       Streaming LTP (subscribe/diff/cache/watchdog, fail-open)
-instruments.py        Symbol→token map for feed (disk cache + weekly refresh)
-risk_manager.py       RiskManager.approve() — 10 gates + vol-targeted sizing
-paper_portfolio.py    PaperPortfolio — cash/positions/txn + intraday cost schedule
-report.py             Daily review (DB-only: expectancy, MFE/MAE, costs, sectors)
-tests/                pytest suite (temp DBs, fake brokers, pinned clock)
-groww_broker.py       GrowwBroker (growwapi, TOTP) — quotes, OHLCV, LTP, holdings
-broker_client.py      BrokerClient ABC + Quote (swap brokers here)
-db.py                 SQLite layer: signals / trades / sessions + backup/restore
-api.py                FastAPI read-only API (:8002)
-monitor.py            Terminal dashboard (polls API + tails logs)
-logs.py / logger.py   Log viewer / get_logger(name) + TradeLogger
-config.py             Central config + NSE_STOCKS universe
-paths.py              Project-root paths (DB / logs / backups)
-```
+Written for learners, start anywhere:
 
-## API (read-only)
+- [`docs/STRATEGY.md`](docs/STRATEGY.md) — what makes the bot buy, in plain words
+- [`docs/STOCK_SELECTION.md`](docs/STOCK_SELECTION.md) — how it picks the morning list
+- [`docs/RISK_MANAGEMENT.md`](docs/RISK_MANAGEMENT.md) — the 10 safety rules with rupee examples
+- [`docs/PORTFOLIO.md`](docs/PORTFOLIO.md) — how pretend money, costs, and profit-taking work
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — your daily routine: commands, timeline, report
+- [`docs/BROKER.md`](docs/BROKER.md) — how live prices arrive (Groww connection + data feed)
+- [`docs/DATABASE.md`](docs/DATABASE.md) — your trading diary: what's recorded and where
+- [`docs/API.md`](docs/API.md) — what each dashboard number means
+- [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) — every setting explained ("if I change X, what happens?")
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — the big picture: how the parts fit together
 
-`GET /health /status /signals /trades /positions /portfolio /sessions /today` — e.g. `curl "localhost:8002/today"`. Details + query params in [`docs/API.md`](docs/API.md). Interactive: `/docs`.
+## Safety notes (boring but important)
 
-## Safety notes
-
-* `.env`, `trading.db`, `backups/*.db`, `logs/` are git-ignored — never commit secrets or trade DBs.
-* `GrowwBroker` exposes no order methods; `live_trader --live` only flips a label + confirmation prompt.
-* Force-close at 15:25 IST avoids overnight gaps but does not guarantee fill prices.
-
-## Development
-
-```bash
-pip install -e ".[dev]"   # pytest, black, ruff
-ruff check . && black . && pytest
-```
-
-To add a strategy: subclass `BaseStrategy` (`base_strategy.py`), implement `name`, `generate_signals(symbol, df) -> list[Signal]`, `required_bars()`; inject into `LiveTrader` in `live_trader.py`. To swap brokers: implement `BrokerClient` and pass to `LiveTrader`/`StockSelector`.
+- Your secret `.env` file, the database, and backups are never uploaded to GitHub (they're in `.gitignore`). Never share your `.env` with anyone.
+- The bot has **no ability to place real orders** — the broker connection is read-only by design.
+- This repo is MIT-licensed (free to learn from and reuse), but that license covers the *code*, not trading outcomes. There are no warranties — see `LICENSE`.

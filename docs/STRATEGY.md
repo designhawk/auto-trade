@@ -1,42 +1,55 @@
-# Strategy
+# How the Bot Decides to Buy (The Strategy, in Plain Words)
 
-`intraday_strategy.py` — `IntradayMomentumStrategy(BaseStrategy)`. 5-minute, long-only, breakout + trend + volume. Contract in `base_strategy.py`.
+The bot follows one classic beginner-friendly idea: **momentum breakout**. In plain English: *when a stock suddenly pushes above the highest price it has touched recently, and lots of people are buying along, it often keeps rising for a while.* The bot tries to ride that short burst and get out quickly.
 
-## Signal shape
+It does NOT predict the future, read news, or "know" anything. It just checks 7 yes/no conditions every 5 minutes. **All 7 must be yes**, otherwise no trade. That strictness is deliberate — most of the time the answer is "do nothing," which is itself a lesson: good traders wait.
 
-`Signal(symbol, action="BUY", confidence 0–1, entry_price, stop_loss, take_profit, reason, volatility_pct?)`. Only `BUY` (or empty list) is ever emitted; exits are handled by `LiveTrader.on_bar` (SL/TP/trailing/force-close), not by signals.
+## The 7 checks, translated
 
-## Entry (all seven must hold on the latest 5m bar)
+Imagine a stock trading around ₹500 at 11 AM:
 
-Evaluated in `generate_signals(symbol, df, df_15m)` (`intraday_strategy.py`), needs `required_bars() = lookback + 2` (default 22):
+1. **Breakout — "Is it making a fresh high?"**
+   The current price must be above the highest price of the last ~20 five-minute bars (roughly the last hour and a half). A fresh high suggests buyers are in control *right now*.
 
-1. **Breakout:** `close > max(high[-lookback-1:-1])` (default 20-bar high, excluding current bar).
-2. **Volume:** `mean(volume[-5:]) > avg(volume[-lookback-1:-1]) × VOLUME_MULTIPLIER` (from `.env`, wired via `live_trader.py`).
-3. **Trend:** `close > EMA(close, trend_lookback=20)`.
-4. **RSI(14):** `30 < RSI < 75`.
-5. **Momentum:** `close > close[-2]`.
-6. **15m trend alignment:** 15m `close > EMA(close, TREND_EMA=20)`. Fail-open when 15m data is missing/short.
-7. **Session VWAP:** 5m `close > VWAP` (computed from today's bars; skipped when fewer than 2 session bars exist). Disable via `VWAP_REQUIRED=false`.
+2. **Volume — "Is the crowd joining in?"**
+   The last few minutes must show clearly heavier trading than that stock's recent average (about 1.5×). A price jump *without* volume is often a fake-out — one big order, then nothing. Volume is the crowd confirming the move.
 
-Plus: per-symbol cooldown (`COOLDOWN_BARS`, from `.env`), and every emitted signal carries `volatility_pct` (ATR%) for risk sizing.
+3. **Uptrend — "Is the bigger picture pointing up?"**
+   The price must be above its own smoothed 20-period average (EMA). This filters out "dead-cat bounces" — tiny jumps inside a falling stock.
 
-## Stops, targets, confidence
+4. **RSI — "Is it energetic but not overheated?" (30–75)**
+   RSI is a 0–100 energy meter. Below 30 = lifeless (skip). Above 75 = overheated and likely to snap back (skip). The bot likes the 30–75 middle zone: moving, not manic.
 
-* `atr = ATR(14)` (simple rolling mean of true range, `calculate_atr`).
-* `stop_loss = max(min(low[-5:]), close − 1.5×ATR)`. Rejected if `risk_pct = (close−SL)/close > MAX_STOP_LOSS_PCT` (2.5%) or `≤ 0`.
-* `take_profit = close + (close−SL) × MIN_RISK_REWARD` (2.0).
-* `confidence = min(vol_ratio/(mult×2),1)×0.6 + min(trend_strength_pct/5, 0.2)`, rounded to 2dp. `vol_ratio` uses the same 5-bar avg; `trend_strength` = distance above EMA20 in %.
+5. **Momentum — "Is this minute still going up?"**
+   The latest price must be higher than the previous bar's close. No buying into a stall.
 
-## Notes
+6. **15-minute trend — "Does the bigger chart agree?"**
+   The same "price above average" test, but on a slower 15-minute chart. This kills a huge number of false alarms where the 5-minute chart twitches but the real trend is flat or down. (If this data is ever missing, the bot lets the trade through rather than freezing — engineers call this "fail-open.")
 
-* All strategy params (`LOOKBACK`, `VOLUME_MULTIPLIER`, `COOLDOWN_BARS`, `TREND_EMA`, `VWAP_REQUIRED`, …) come from `.env` via `config.py` — `LiveTrader` passes them explicitly.
-* **Indicator warmup:** 20-bar high + EMA20 + RSI14 on 50 bars of 5m data is thin; first signals of the day are noisy.
-* **No short/exit signals.** `action` is always `BUY`; `HOLD`/`SELL` never emitted.
+7. **Above VWAP — "Am I paying more than the day's fair price?"**
+   VWAP is the average price everyone paid today (weighted by volume). The bot only buys *above* it — meaning the stock is genuinely strong today, not just bouncing weakly below average.
 
-## Tuning
+Plus one housekeeping rule: **cooldown** — after trading a stock, the bot ignores it for a while so it doesn't keep jumping in and out of the same name.
 
-Constructor: `lookback, volume_multiplier, min_risk_reward, max_stop_loss_pct, cooldown_bars, trend_lookback, trend_ema, vwap_required`. Tighten `volume_multiplier` (fewer, stronger breakouts), lower `max_stop_loss_pct` (tighter risk, more rejects), raise `cooldown_bars` (fewer repeat entries). Validate via `validate_dataframe` (needs `open/high/low/close/volume`).
+## What happens the moment all 7 pass?
 
-## Adding a strategy
+The bot creates a **signal** — a little plan that says:
 
-Subclass `BaseStrategy`: implement `name`, `generate_signals(symbol, df, df_15m=None) -> list[Signal]`, `required_bars()`. Inject in `live_trader.py` (`main()`). Keep signals long-only unless you also extend `on_bar`/risk sizing (currently long-assumed: `risk = entry − SL`).
+- **Entry price:** buy around the current price
+- **Stop-loss:** the lower of (a) the lowest price of the last 5 bars, or (b) current price minus 1.5× its normal wiggle-room (ATR). If even that safety net is too wide (more than ~2.5% away), the whole trade is cancelled — too risky.
+- **Take-profit:** entry + 2× the risk. Risk ₹2 per share → aim to make ₹4. That's the "1:2 risk-reward" rule.
+- **Confidence:** a 0–1 score from volume strength and trend strength. Higher confidence = slightly bigger position (see Risk Management).
+
+Then the signal goes to the safety department (risk manager), which can still say no. A signal is a *proposal*, not an order.
+
+## What the strategy does NOT do (important!)
+
+- **Never sells short** (betting a stock will fall). It only buys rising stocks.
+- **Never generates sell signals.** Exits (stop-loss, take-profit, half-profit, scratch, end-of-day) are handled separately — see Operations.
+- **Never trades pre-market, after 14:45, or overnight.** No fresh bets late in the day, nothing held while you sleep.
+
+## Beginner takeaways
+
+- Notice how *rare* trades should be: 7 simultaneous conditions is a high bar. If your bot trades 50 times a day, something is misconfigured.
+- Every number here (20 bars, 1.5× volume, RSI 30–75, 2:1 reward) is a *choice*, not a law of nature. They're adjustable in `.env` — and the daily report's MFE/MAE section tells you whether they're well chosen.
+- Unproven edge, honest scaffolding: this exact recipe has no proven profitability. Treat it as your *first* recipe to test, question, and improve — that's the whole point of the project.
