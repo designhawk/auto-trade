@@ -305,18 +305,21 @@ def get_cash_flow() -> tuple:
         return float(row[0]), float(row[1])
 
 
-def backup_db(backup_dir: str = str(BACKUP_DIR)) -> str:
+def backup_db(backup_dir: str = None) -> str:
     """
     Create a timestamped backup of the database.
-    
+
     Args:
-        backup_dir: Directory to store backups
-        
+        backup_dir: Directory to store backups (default: project backups/)
+
     Returns:
         Path to backup file
     """
     from datetime import datetime
     import shutil
+
+    if backup_dir is None:
+        backup_dir = str(BACKUP_DIR)
     
     if not DB_PATH.exists():
         return None
@@ -354,8 +357,10 @@ def restore_db(backup_path: str) -> bool:
     return True
 
 
-def get_backup_list(backup_dir: str = str(BACKUP_DIR)) -> list:
+def get_backup_list(backup_dir: str = None) -> list:
     """Get list of available backups."""
+    if backup_dir is None:
+        backup_dir = str(BACKUP_DIR)
     backup_path = Path(backup_dir)
     if not backup_path.exists():
         return []

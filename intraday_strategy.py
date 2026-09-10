@@ -166,6 +166,8 @@ class IntradayMomentumStrategy(BaseStrategy):
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs)).iloc[-1]
+        if pd.isna(rsi):
+            return []  # flat/degenerate series has no momentum to trade
 
         # 7. Previous close for context
         prev_close = df["close"].iloc[-2]

@@ -49,7 +49,9 @@ class StockSelector:
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
 
-        return rsi.iloc[-1]
+        last = rsi.iloc[-1]
+        # Flat series -> 0/0 = NaN; neutral 50 keeps scoring total, never a trade
+        return 50.0 if pd.isna(last) else float(last)
 
     def calculate_atr(self, df: pd.DataFrame, period: int = 14) -> float:
         """Calculate True ATR using Wilder's smoothing (includes gap opens)."""
@@ -376,6 +378,8 @@ class StockSelector:
         range_pos = (price - day_low) / day_range * 100 if day_range > 0 else 50.0
 
         rsi = self.calculate_rsi(closes, 14)
+        if pd.isna(rsi):
+            return 0.0, {"error": "RSI undefined"}
         if 50 <= rsi <= 70:
             rsi_score = 100 - abs(rsi - 60) * 2
         elif rsi > 70:

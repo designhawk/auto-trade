@@ -28,7 +28,8 @@ import sqlite3
 from contextlib import contextmanager
 import json
 
-from db import get_db, get_trades_for_date, get_signals_for_date, get_all_sessions, get_cash_flow, DB_PATH
+from db import get_db, get_trades_for_date, get_signals_for_date, get_all_sessions, get_cash_flow
+import db as _dbmod
 from config import config
 
 # Broker for live prices
@@ -93,22 +94,29 @@ def health_check():
 def get_status():
     """Get current trading system status."""
     try:
-        # Check if database exists (anchored to project root, not cwd)
-        db_exists = DB_PATH.exists()
-        
-        # Get latest session info
-        sessions = get_all_sessions()
-        latest_session = sessions[0] if sessions else None
-        
-        # Count today's signals and trades
-        today = date.today().isoformat()
-        signals_today = len(get_signals_for_date(today))
-        trades_today = len(get_trades_for_date(today))
-        
+        # Live reference: honors test/region re-pointing
+        db_connected = _dbmod.DB_PATH.exists()
+
+        sessions, latest_session = [], None
+        signals_today, trades_today = 0, 0
+        if db_connected:
+            try:
+                # Get latest session info
+                sessions = get_all_sessions()
+                latest_session = sessions[0] if sessions else None
+
+                # Count today's signals and trades
+                today = date.today().isoformat()
+                signals_today = len(get_signals_for_date(today))
+                trades_today = len(get_trades_for_date(today))
+            except Exception:
+                # File exists but schema is missing/unreadable
+                db_connected = False
+
         return {
-            "status": "running" if db_exists else "error",
+            "status": "running" if db_connected else "error",
             "timestamp": datetime.now().isoformat(),
-            "database_connected": db_exists,
+            "database_connected": db_connected,
             "latest_session": latest_session,
             "today_signals": signals_today,
             "today_trades": trades_today,
