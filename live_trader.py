@@ -747,12 +747,8 @@ class LiveTrader:
             log.info("Starting trading loop...")
 
             # Run continuously during market hours
-            import pytz
-
-            IST = pytz.timezone("Asia/Kolkata")
-
             while True:
-                now = datetime.now(IST)
+                now = self._ist_now()  # injectable clock (tests pin it)
                 current_hour = now.hour
                 current_minute = now.minute
 

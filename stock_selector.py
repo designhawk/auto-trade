@@ -280,7 +280,8 @@ class StockSelector:
         passing.sort(key=lambda m: m["base_score"], reverse=True)
         cands = passing[:60]
         snap = {}
-        if self._market_elapsed_min() > 0:
+        elapsed = self._market_elapsed_min()
+        if 0 < elapsed <= 375:  # live session only; stale snapshots never boost
             try:
                 getter = getattr(self.broker, "get_day_ohlc", None)
                 if getter is not None:

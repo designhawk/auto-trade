@@ -61,7 +61,11 @@ def test_session_boost_math():
     assert 0.85 <= mult2 < 1.0
 
 
-def test_rank_applies_snapshot_boost():
+def test_rank_applies_snapshot_boost(monkeypatch):
+    monkeypatch.setattr(StockSelector, "_market_elapsed_min",
+                        staticmethod(lambda: 30))  # pin to live session
+    calls = []
+
     class _SnapBroker:
         def get_ohlcv(self, symbol, interval, bars):
             if symbol == "UP":
@@ -69,13 +73,34 @@ def test_rank_applies_snapshot_boost():
             raise RuntimeError("no data")
 
         def get_day_ohlc(self, symbols):
+            calls.append(list(symbols))
             return {s: {"open": 110.0, "high": 113.0, "low": 109.0, "close": 112.5}
                     for s in symbols}
 
     sel = StockSelector(_SnapBroker())
     ranked = sel.rank_stocks(["UP", "MISSING"], interval="1d", bars=100)
     assert ranked and ranked[0]["symbol"] == "UP"
-    assert ranked[0]["session_boost"] >= 1.0
+    assert calls, "in-session snapshot must be fetched"
+    assert ranked[0]["session_boost"] > 1.0  # deterministic: snapshot feeds boost
+
+
+def test_snapshot_skipped_off_hours(monkeypatch):
+    monkeypatch.setattr(StockSelector, "_market_elapsed_min",
+                        staticmethod(lambda: 676))  # after close: stale data risk
+    calls = []
+
+    class _B:
+        def get_ohlcv(self, symbol, interval, bars):
+            return _trend_df(step=0.8)
+
+        def get_day_ohlc(self, symbols):
+            calls.append(symbols)
+            return {}
+
+    sel = StockSelector(_B())
+    ranked = sel.rank_stocks(["UP"], interval="1d", bars=100)
+    assert ranked and ranked[0]["session_boost"] == 1.0
+    assert calls == [], "off-hours must not fetch a stale day snapshot"
 
 
 def test_sector_caps():
