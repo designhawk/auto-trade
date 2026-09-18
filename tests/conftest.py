@@ -1,4 +1,5 @@
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -8,6 +9,14 @@ try:
     import growwapi  # noqa: F401
 except ImportError:
     sys.modules.setdefault("growwapi", MagicMock())
+
+# Shield the real logs/ directory. logger.py binds LOG_DIR to its own
+# FileHandler at import time, so this must run before any test module imports
+# live_trader/api - each test run used to append ~200 fake END SESSION blocks
+# to the day's real trading log.
+import paths  # noqa: E402
+
+paths.LOG_DIR = Path(tempfile.mkdtemp(prefix="autotrade_test_logs_"))
 
 import pytest  # noqa: E402
 
