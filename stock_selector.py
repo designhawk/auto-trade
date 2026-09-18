@@ -119,17 +119,20 @@ class StockSelector:
         trend_strength = (sma5 / sma20 - 1) * 100  # -3% to +3% typical
         trend_score = np.clip((trend_strength + 3) / 6 * 100, 0, 100)
 
-        # Volatility check (ATR)
+        # Liquidity + volatility screens (evidence-backed; see docs/RESEARCH.md):
+        # - "stocks in play" need to actually move (daily ATR floor),
+        # - tradeable size in rupees, not share counts.
         atr = self.calculate_atr(df)
         volatility_pct = (atr / current_price) * 100
+        if not (config.MIN_DAILY_ATR_PCT <= volatility_pct <= config.MAX_DAILY_ATR_PCT):
+            return 0.0, {"error": f"Daily ATR {volatility_pct:.2f}% outside "
+                                  f"{config.MIN_DAILY_ATR_PCT}-{config.MAX_DAILY_ATR_PCT}%"}
 
-        # Filters: Tight bounds for NSE intraday (0.3% - 4%)
-        if volatility_pct > 4.0 or volatility_pct < 0.3:
-            return 0.0, {"error": f"Volatility out of range: {volatility_pct:.1f}"}
-
-        # Filter: Skip low volume
-        if avg_volume < 200000:  # 2L minimum
-            return 0.0, {"error": "Low volume"}
+        turnover_cr = float(
+            (df["close"].tail(20) * df["volume"].tail(20)).median()
+        ) / 1e7
+        if turnover_cr < config.MIN_TURNOVER_CR:
+            return 0.0, {"error": f"Low turnover: Rs.{turnover_cr:.1f}cr"}
 
         # Composite score (all components 0-100, weights sum to 100%)
         momentum_score = (
@@ -217,6 +220,11 @@ class StockSelector:
             if day_open is None:
                 return 1.0, {"skipped": "no-snapshot"}
             gap_pct = (day_open / prev_close - 1) * 100
+            # Extreme gaps are usually news/circuit events: poor fills and
+            # false opening ranges (research: skip >0.8% index gaps; we use a
+            # wider stock-level cap). 0.0 excludes the candidate entirely.
+            if abs(gap_pct) > config.MAX_GAP_PCT + 1e-9:
+                return 0.0, {"skipped": f"extreme gap {gap_pct:.1f}%"}
             activity = 0.0
             if day_high is not None and day_low is not None:
                 activity = ((day_high - day_low) / prev_close * 100) / atr_pct
@@ -298,6 +306,7 @@ class StockSelector:
             m["session_boost"] = mult
             m["momentum_score"] = m["base_score"] * mult
 
+        passing = [m for m in passing if m["momentum_score"] > 0]  # drop excluded
         passing.sort(key=lambda m: m["momentum_score"], reverse=True)
         return passing
 
@@ -373,6 +382,10 @@ class StockSelector:
 
         avg20 = df["volume"].rolling(20).mean().iloc[-1]
         rvol = df["volume"].tail(5).mean() / avg20 if avg20 > 0 else 1.0
+        # "Stocks in play" gate (Zarattini et al. 2024): below-average volume
+        # has negative expectancy. 0.0 removes it from the re-rank.
+        if rvol < config.MIN_RVOL:
+            return 0.0, {"error": f"RVOL {rvol:.2f} < {config.MIN_RVOL}"}
 
         day_high, day_low = df["high"].max(), df["low"].min()
         day_range = day_high - day_low

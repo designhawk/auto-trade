@@ -15,6 +15,10 @@ All settings live in one file: **`.env`** (your private copy; `.env.example` sho
 | Setting | Default | What happens if you change it |
 |---|---|---|
 | `TOP_STOCKS` | 30 | Watchlist size. Fewer = more focused, more API calls per stock; more = broader, noisier. |
+| `MIN_DAILY_ATR_PCT` / `MAX_DAILY_ATR_PCT` | 1.0 / 6.0 | Daily movement band. Below 1% = too sleepy to reach intraday targets; above 6% = news/circuit chaos. Evidence: docs/RESEARCH.md. |
+| `MIN_TURNOVER_CR` | ₹25cr | Median daily traded value (price × volume). Rupee liquidity, not share count — lets you exit without slippage. |
+| `MIN_RVOL` | 1.0 | "Stock in play" floor at re-rank: recent volume must be at least average. Below-average activity has negative expectancy (Zarattini et al. 2024). |
+| `MAX_GAP_PCT` | 5.0 | Skip stocks gapping more than this (news/circuit events; false opening ranges). |
 | `MAX_SECTOR_POSITIONS` | 3 | Max picks per sector. Lower = more diversified; higher = lets hot sectors dominate. |
 | `RESELECT_TIMES` | 09:30,11:00 | Mid-morning re-ranks. Remove them and the morning list never adapts. |
 | `LOOKBACK` | 20 | "Recent high" window for breakouts. Shorter = more (worse?) signals; longer = fewer, stronger ones. |
@@ -53,7 +57,7 @@ All settings live in one file: **`.env`** (your private copy; `.env.example` sho
 
 ## "Plumbing" (you can ignore these)
 
-`GROWW_TOTP_TOKEN/SECRET` (login), `GROWW_API_KEY/SECRET` (alternate login), `API_PORT`, `DASHBOARD_PORT`, `FEED_ENABLED`, `FEED_MAX_AGE_S`, `INSTRUMENTS_TTL_DAYS`, `MIN_VOLUME`, `MAX_STOP_LOSS_PCT`. The stock universe lives in `universe.py` (auto-generated from NSE's NIFTY 500 list; refresh with `python tools/update_universe.py`).
+`GROWW_TOTP_TOKEN/SECRET` (login), `GROWW_API_KEY/SECRET` (alternate login), `API_PORT`, `DASHBOARD_PORT`, `FEED_ENABLED`, `FEED_MAX_AGE_S`, `INSTRUMENTS_TTL_DAYS`, `MAX_STOP_LOSS_PCT`. The stock universe lives in `universe.py` (auto-generated from NSE's NIFTY 500 list; refresh with `python tools/update_universe.py`).
 
 ## Beginner takeaways
 

@@ -112,6 +112,8 @@ class Config:
     MARKET_END_HOUR = 15
     MARKET_END_MINUTE = 25
     # Session management (Phase E)
+    ENTRY_START_HOUR = 9
+    ENTRY_START_MINUTE = 30  # no fresh entries in the noisy first 15 min
     ENTRY_CUTOFF_HOUR = 14
     ENTRY_CUTOFF_MINUTE = 45  # no new entries after this
     SCALE_START_HOUR = 15
@@ -141,7 +143,12 @@ class Config:
 
     # Selection settings
     TOP_STOCKS = int(os.getenv("TOP_STOCKS", "30"))  # Select top 30 from universe
-    MIN_VOLUME = int(os.getenv("MIN_VOLUME", "500000"))  # Min average volume
+    # Filters below are evidence-backed - see docs/RESEARCH.md
+    MIN_DAILY_ATR_PCT = float(os.getenv("MIN_DAILY_ATR_PCT", "1.0"))
+    MAX_DAILY_ATR_PCT = float(os.getenv("MAX_DAILY_ATR_PCT", "6.0"))
+    MIN_TURNOVER_CR = float(os.getenv("MIN_TURNOVER_CR", "25"))  # median daily Rs.cr
+    MIN_RVOL = float(os.getenv("MIN_RVOL", "1.0"))  # "stocks in play" floor
+    MAX_GAP_PCT = float(os.getenv("MAX_GAP_PCT", "5.0"))  # skip extreme gaps
 
 
 config = Config()

@@ -99,6 +99,17 @@ def test_entry_cutoff_blocks(tmpdb, monkeypatch):
     assert db.get_signals_for_date(datetime.now().date().isoformat()) == []
 
 
+def test_entry_start_blocks_first_15min(tmpdb, monkeypatch):
+    """Research: the first 15 minutes are false-breakout territory."""
+    monkeypatch.setattr(LiveTrader, "_ist_now",
+                        staticmethod(lambda: datetime(2026, 1, 1, 9, 20)))
+    t = _trader({"E": {config.TRADE_INTERVAL: _breakout_5m(), "15m": _up_15m()}})
+    t.watchlist = ["E"]
+    t.on_bar()
+    assert not t.paper_portfolio.has_position("E")
+    assert db.get_signals_for_date(datetime.now().date().isoformat()) == []
+
+
 def test_reselect_promotes_and_protects_held(tmpdb, monkeypatch):
     monkeypatch.setattr(LiveTrader, "_ist_now",
                         staticmethod(lambda: datetime(2026, 1, 1, 10, 5)))

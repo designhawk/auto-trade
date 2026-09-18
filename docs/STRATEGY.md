@@ -46,7 +46,7 @@ Then the signal goes to the safety department (risk manager), which can still sa
 
 - **Never sells short** (betting a stock will fall). It only buys rising stocks.
 - **Never generates sell signals.** Exits (stop-loss, take-profit, half-profit, scratch, end-of-day) are handled separately — see Operations.
-- **Never trades pre-market, after 14:45, or overnight.** No fresh bets late in the day, nothing held while you sleep.
+- **Never trades pre-market, before 9:30, after 14:45, or overnight.** The 9:15–9:30 window is false-breakout territory (well documented), late entries have no time to work, and nothing is held while you sleep.
 
 ## Tuning for your interval
 

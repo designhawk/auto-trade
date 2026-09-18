@@ -14,7 +14,7 @@ Using the last ~100 days of daily prices, each stock gets graded on:
 | 5-day return, 20% | Has it actually been going up this week? |
 | Trend shape, 15% | Is the short average above the longer average (uptrend shape)? |
 
-Two instant disqualifiers, no matter the grades: **too jumpy or too sleepy** (daily wiggle outside 0.3–4%), and **too thinly traded** (under ~2 lakh shares/day average — beginners should avoid illiquid stocks where you can't exit cleanly).
+Three instant disqualifiers, no matter the grades: **too jumpy or too sleepy** (daily movement outside 1–6%), **too thinly traded** (median daily turnover under ₹25 crore — you couldn't exit without moving the price), and **news-sized gaps** (over 5% at the open — unreliable). These follow the public evidence; see [`RESEARCH.md`](RESEARCH.md).
 
 Clever bit: instead of fixed pass marks, stocks are graded **on a curve** (percentile ranks). If the whole market is sleepy one morning, the *relatively* best still float up — no single factor can dominate just because its numbers run hot.
 
@@ -33,7 +33,7 @@ Even if 10 banks top the list, the bot takes at most **3 per sector**. Ten bank 
 
 ## Step 4: Re-check at 9:30 and 11:00 (the mid-morning reality check)
 
-The morning list is a prediction; the market is the answer. Twice mid-morning the bot re-scores the watchlist on live intraday action (distance from VWAP, fresh trend, live volume, RSI) and swaps dull names for livelier reserves. **One golden rule: stocks you already own are never evicted** — re-ranking only changes *future* entries, never disturbs open trades.
+The morning list is a prediction; the market is the answer. Twice mid-morning the bot re-scores the watchlist on live intraday action (distance from VWAP, fresh trend, live volume, RSI) and swaps dull names for livelier reserves. One evidence-backed gate applies here: a stock whose recent volume has dropped **below its own average** (relative volume < 1) is dropped — "not in play" days have negative average expectancy in the published research. **One golden rule: stocks you already own are never evicted** — re-ranking only changes *future* entries, never disturbs open trades.
 
 ## Beginner takeaways
 

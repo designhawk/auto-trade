@@ -413,11 +413,15 @@ class LiveTrader:
             except Exception as e:
                 log.error(f"Error checking position {symbol}: {e}")
 
-        # Second: Check for new entry signals (closed after ENTRY_CUTOFF)
-        entries_open = (now_ist.hour, now_ist.minute) < (
-            config.ENTRY_CUTOFF_HOUR, config.ENTRY_CUTOFF_MINUTE)
+        # Second: Check for new entry signals (bounded entry window:
+        # skip the noisy first 15 min, stop before the late-day phase)
+        hm = (now_ist.hour, now_ist.minute)
+        entries_open = (
+            (config.ENTRY_START_HOUR, config.ENTRY_START_MINUTE) <= hm
+            < (config.ENTRY_CUTOFF_HOUR, config.ENTRY_CUTOFF_MINUTE)
+        )
         if not entries_open:
-            log.info("Past entry cutoff - no new entries this bar")
+            log.info("Outside entry window - no new entries this bar")
         for symbol in self.watchlist:
             try:
                 if not entries_open:
