@@ -1,6 +1,6 @@
 # How the Bot Picks Stocks Every Morning
 
-You can't watch 500 stocks at once — so every morning the bot narrows the **NIFTY 500** (the ~500 largest listed Indian companies, refreshed from NSE's official list) down to a **watchlist of ~30**, then spends the day watching only those. Think of it as a morning shortlist, like a cricket selector picking the match-day squad.
+You can't watch 750 stocks at once — so every morning the bot narrows the **NIFTY Total Market top 750** (a superset of NIFTY 500: the 500 index plus the next 250 by market cap, refreshed from NSE's official list) down to a **watchlist of ~30**, then spends the day watching only those. Think of it as a morning shortlist, like a cricket selector picking the match-day squad.
 
 ## Step 1: Grade every stock on 5 subjects (daily charts)
 

@@ -68,9 +68,10 @@ def test_universe_integrity():
     import universe
     from datetime import date as _date
 
-    assert len(universe.NIFTY500) > 400, "NIFTY 500 universe looks truncated"
-    assert len(universe.NIFTY500) == len(set(universe.NIFTY500)), "duplicates"
-    assert set(universe.NIFTY500) == set(universe.SECTORS), "symbol/sector mismatch"
+    assert len(universe.UNIVERSE) > 600, "top-750 universe looks truncated"
+    assert len(universe.UNIVERSE) == len(set(universe.UNIVERSE)), "duplicates"
+    assert set(universe.UNIVERSE) == set(universe.SECTORS), "symbol/sector mismatch"
+    assert "Total Market" in universe.SOURCE
     _date.fromisoformat(universe.FETCHED)  # raises if malformed
 
 

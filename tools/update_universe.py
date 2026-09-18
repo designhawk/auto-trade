@@ -1,7 +1,11 @@
 # tools/update_universe.py
 """
-Regenerate universe.py from the official NSE NIFTY 500 constituent list,
-intersected with instruments available on Groww (NSE/CASH, EQ series).
+Regenerate universe.py from the official NSE constituent lists, intersected
+with instruments available on Groww (NSE/CASH, EQ series).
+
+Primary source: NIFTY Total Market (top 750 by market cap; a strict superset
+of NIFTY 500 = Large 100 + Midcap 150 + Smallcap 250). Falls back to the
+NIFTY 500 list if the total-market file is unavailable.
 
 Usage:
     python tools/update_universe.py
@@ -26,7 +30,11 @@ import requests
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-NSE_URL = "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv"
+NSE_BASE = "https://nsearchives.nseindia.com/content/indices/"
+NSE_LISTS = [
+    ("NIFTY Total Market (top 750)", "ind_niftytotalmarket_list.csv"),
+    ("NIFTY 500", "ind_nifty500list.csv"),  # fallback
+]
 
 INDUSTRY_TO_SECTOR = {
     "Financial Services": "FINANCE",
@@ -49,7 +57,27 @@ INDUSTRY_TO_SECTOR = {
     "Textiles": "TEXTILES",
     "Media Entertainment & Publication": "MEDIA",
     "Diversified": "OTHER",
+    "Utilities": "ENERGY",
+    "Forest Materials": "OTHER",
 }
+
+
+def fetch_constituents() -> tuple:
+    """Return (source_label, DataFrame) from the first available NSE list."""
+    last_err = None
+    for label, fname in NSE_LISTS:
+        try:
+            r = requests.get(NSE_BASE + fname, timeout=30,
+                             headers={"User-Agent": "Mozilla/5.0"})
+            r.raise_for_status()
+            df = pd.read_csv(io.StringIO(r.text))
+            df = df[df["Series"] == "EQ"]
+            if len(df) < 100:
+                raise ValueError(f"suspiciously small ({len(df)} rows)")
+            return label, df
+        except Exception as e:
+            last_err = e
+    raise SystemExit(f"No NSE constituent list available: {last_err}")
 
 
 def groww_symbols() -> set:
@@ -89,14 +117,12 @@ def groww_symbols() -> set:
 
 
 def main() -> None:
-    r = requests.get(NSE_URL, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
-    r.raise_for_status()
-    n500 = pd.read_csv(io.StringIO(r.text))
-    n500 = n500[n500["Series"] == "EQ"]
+    source_label, constituents = fetch_constituents()
+    print(f"[nse] {source_label}: {len(constituents)} EQ symbols")
 
     available = groww_symbols()
-    kept = n500[n500["Symbol"].isin(available)].sort_values("Symbol")
-    dropped = sorted(set(n500["Symbol"]) - set(kept["Symbol"]))
+    kept = constituents[constituents["Symbol"].isin(available)].sort_values("Symbol")
+    dropped = sorted(set(constituents["Symbol"]) - set(kept["Symbol"]))
 
     try:
         from sectors import SECTOR_MAP as CURATED
@@ -109,19 +135,19 @@ def main() -> None:
         '"""',
         "AUTO-GENERATED - do not edit by hand.",
         "",
-        "NIFTY 500 universe (official NSE constituent list, EQ series)",
+        f"{source_label} universe (official NSE constituent list, EQ series)",
         "intersected with instruments available on Groww (NSE/CASH).",
+        "Superset of NIFTY 500 (Large 100 + Midcap 150 + Smallcap 250).",
         "Sectors come from NSE's Industry column; curated entries in",
         "sectors.py always override the generated mapping.",
         "",
-        f"Source: {NSE_URL}",
-        f"Fetched: {today}",
         "Regenerate: python tools/update_universe.py",
         '"""',
         "",
         f'FETCHED = "{today}"',
+        f'SOURCE = "{source_label}"',
         "",
-        "NIFTY500 = [",
+        "UNIVERSE = [",
     ]
     lines += [f'    "{s}",' for s in kept["Symbol"]]
     lines += ["]", "", "SECTORS = {"]

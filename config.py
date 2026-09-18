@@ -8,7 +8,7 @@ All settings should be defined here.
 import os
 from dotenv import load_dotenv
 
-from universe import NIFTY500
+from universe import UNIVERSE
 
 load_dotenv()
 
@@ -138,9 +138,11 @@ class Config:
     DB_PATH = "trading.db"
     BACKUP_DIR = "backups"
 
-    # Stock Universe - NIFTY 500 (official NSE list, Groww-verified)
-    # Generated in universe.py; refresh: python tools/update_universe.py
-    NSE_STOCKS = NIFTY500
+    # Stock Universe - NIFTY Total Market (top 750 by market cap, official
+    # NSE list, Groww-verified; superset of NIFTY 500 = Large100 + Midcap150
+    # + Smallcap250). Generated in universe.py; refresh:
+    # python tools/update_universe.py
+    NSE_STOCKS = UNIVERSE
 
     # Selection settings
     TOP_STOCKS = int(os.getenv("TOP_STOCKS", "30"))  # Select top 30 from universe

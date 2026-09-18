@@ -8,7 +8,7 @@ A robot that **pretends to trade** Indian stocks (NSE) during market hours so yo
 
 Think of it as a very disciplined trainee trader that works for you every market day:
 
-- **Morning (~9:00):** It looks at all ~500 NIFTY 500 stocks and picks the ~30 showing the strongest recent momentum (rising price + healthy trading activity).
+- **Morning (~9:00):** It looks at the top ~750 listed Indian stocks (NIFTY Total Market — a superset of NIFTY 500) and picks the ~30 showing the strongest recent momentum (rising price + healthy trading activity).
 - **During market hours (9:15–15:25):** On every bar (5-minute bars by default; set `TRADE_INTERVAL=1m` in `.env` for 1-minute trading) it checks each picked stock. If a stock suddenly jumps above its recent highest price *with strong volume* and passes 6 more safety checks, the bot "buys" it with virtual money.
 - **After buying:** It watches the stock. If the price falls to a pre-decided danger level (**stop-loss**), it sells to limit the damage. If it rises to the profit goal (**take-profit**), it sells and banks the virtual profit. It also takes half-profit midway and gives up on stocks that go nowhere (**scratch**).
 - **End of day (15:00–15:25):** It sells everything. It never holds stocks overnight, so a bad overnight news event can never hurt it.

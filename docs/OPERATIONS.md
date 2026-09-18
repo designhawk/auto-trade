@@ -59,7 +59,7 @@ Read in this order: (1) Total P&L — the score. (2) Win rate + profit factor �
 - `python logs.py [api|trader|all] [-n 50] [-f] [--clear]` — browse or clear old diaries.
 - `python -m pytest tests/ -q` — 89 self-tests. Run after any change you make to the code.
 - `python stock_selector.py` — tiny demo: ranks 5 famous stocks so you can see scoring work.
-- `python tools/update_universe.py` — refresh the NIFTY 500 stock list from NSE (run every few weeks; index membership changes quarterly).
+- `python tools/update_universe.py` — refresh the top-750 stock universe from NSE (run every few weeks; index membership changes quarterly).
 
 ## Beginner takeaways
 

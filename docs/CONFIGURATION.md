@@ -57,7 +57,7 @@ All settings live in one file: **`.env`** (your private copy; `.env.example` sho
 
 ## "Plumbing" (you can ignore these)
 
-`GROWW_TOTP_TOKEN/SECRET` (login), `GROWW_API_KEY/SECRET` (alternate login), `API_PORT`, `DASHBOARD_PORT`, `FEED_ENABLED`, `FEED_MAX_AGE_S`, `INSTRUMENTS_TTL_DAYS`, `MAX_STOP_LOSS_PCT`. The stock universe lives in `universe.py` (auto-generated from NSE's NIFTY 500 list; refresh with `python tools/update_universe.py`).
+`GROWW_TOTP_TOKEN/SECRET` (login), `GROWW_API_KEY/SECRET` (alternate login), `API_PORT`, `DASHBOARD_PORT`, `FEED_ENABLED`, `FEED_MAX_AGE_S`, `INSTRUMENTS_TTL_DAYS`, `MAX_STOP_LOSS_PCT`. The stock universe lives in `universe.py` (auto-generated from NSE's NIFTY Total Market top-750 list; refresh with `python tools/update_universe.py`).
 
 ## Beginner takeaways
 

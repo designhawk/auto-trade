@@ -8,7 +8,7 @@ and the daily report (sector attribution).
 Two layers:
 1. SECTOR_MAP below - curated overrides (kept authoritative).
 2. universe.SECTORS - generated from NSE's Industry column for the current
-   NIFTY 500 universe (refresh: python tools/update_universe.py).
+   top-750 universe (NIFTY Total Market; refresh: python tools/update_universe.py).
 
 Symbols in neither map fall back to "MISC".
 """
