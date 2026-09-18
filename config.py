@@ -111,11 +111,15 @@ class Config:
     SCALE_1430_R = float(os.getenv("SCALE_1430_R", "1.0"))  # force-scale above this R after 14:30
 
     # Portfolio (NSE equity-intraday schedule)
-    BROKERAGE_PCT = float(os.getenv("BROKERAGE_PCT", "0.0003"))
+    # Groww intraday: 0.1% or Rs.20 per order, whichever is lower (min Rs.5;
+    # SEBI caps small-order brokerage at 2.5% of value).
+    BROKERAGE_PCT = float(os.getenv("BROKERAGE_PCT", "0.001"))
+    BROKERAGE_CAP = float(os.getenv("BROKERAGE_CAP", "20"))
+    BROKERAGE_MIN = float(os.getenv("BROKERAGE_MIN", "5"))
     STT_PCT = float(os.getenv("STT_PCT", "0.00025"))  # sell side only
-    EXCHANGE_PCT = float(os.getenv("EXCHANGE_PCT", "0.0000297"))
+    EXCHANGE_PCT = float(os.getenv("EXCHANGE_PCT", "0.000030699"))  # NSE Apr 2026
     SEBI_PCT = float(os.getenv("SEBI_PCT", "0.000001"))
-    STAMP_PCT = float(os.getenv("STAMP_PCT", "0.00002"))  # buy side only
+    STAMP_PCT = float(os.getenv("STAMP_PCT", "0.00003"))  # buy side only (0.003%)
     GST_PCT = float(os.getenv("GST_PCT", "0.18"))
     SLIPPAGE_MAX_PCT = float(os.getenv("SLIPPAGE_MAX_PCT", "0.0004"))
     _SLIP_SEED = os.getenv("SLIPPAGE_SEED", "")

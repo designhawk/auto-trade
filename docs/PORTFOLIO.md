@@ -9,13 +9,13 @@ You buy **10 shares at ₹1,000** (₹10,000 position) and later sell at ₹1,02
 | Line item | Buy | Sell | Why it exists |
 |---|---|---|---|
 | Share value | ₹10,000 | ₹10,200 | The obvious part |
-| Brokerage 0.03% | ₹3.00 | ₹3.06 | Your broker's fee, both sides |
+| Brokerage (Groww: 0.1%, min ₹5, cap ₹20/order) | ₹10.00 | ₹10.20 | Your broker's fee, both sides |
 | STT 0.025% | ₹0 | ₹2.55 | Government tax — **sell side only** for intraday |
-| Stamp + exchange + SEBI + GST | ~₹3.50 | ~₹3.60 | Tiny fees that add up over hundreds of trades |
+| Stamp (buy 0.003%) + exchange + SEBI + GST | ~₹2.47 | ~₹2.22 | Tiny fees that add up over hundreds of trades |
 | Slippage | ~₹0–4 | ~₹0–4 | You never get exactly the price on screen; the bot rolls dice between 0 and 0.04% against you, like real markets do |
-| **You actually pay / receive** | **~₹10,007** | **~₹10,191** | |
+| **You actually pay / receive** | **~₹10,012** | **~₹10,185** | |
 
-Real profit: **~₹184**, not the ₹200 the share prices suggest. Now imagine 200 trades a month — costs quietly eat thousands. *This* is why the report has a Costs section, and why frequent trading is a beginner trap. (Rates follow standard NSE intraday norms — check them against a real broker contract note before trusting absolute rupee figures.)
+Real profit: **~₹173**, not the ₹200 the share prices suggest. Now imagine 200 trades a month — costs quietly eat thousands. *This* is why the report has a Costs section, and why frequent trading is a beginner trap. (Defaults follow Groww's intraday schedule + April 2026 NSE statutory rates — check them against a real broker contract note before trusting absolute rupee figures.)
 
 ## How exits work (what happens after you own something)
 

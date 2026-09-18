@@ -61,7 +61,7 @@ All settings live in one file: **`.env`** (your private copy; `.env.example` sho
 
 ## "What does trading cost me?" (leave these unless verifying)
 
-`BROKERAGE_PCT`, `STT_PCT` (sell-side only), `EXCHANGE_PCT`, `SEBI_PCT`, `STAMP_PCT` (buy-side), `GST_PCT`, `SLIPPAGE_MAX_PCT` (random 0–max per fill), `SLIPPAGE_SEED` (set a number for reproducible experiments). These mirror standard NSE intraday charges — verify against a real contract note, don't tune for prettier paper profits.
+`BROKERAGE_PCT` / `BROKERAGE_CAP` / `BROKERAGE_MIN` (Groww intraday: 0.1% per order, lower of ₹20, floor ₹5), `STT_PCT` (sell-side only), `EXCHANGE_PCT` (NSE, Apr 2026), `SEBI_PCT`, `STAMP_PCT` (buy-side, 0.003% intraday), `GST_PCT`, `SLIPPAGE_MAX_PCT` (random 0–max per fill), `SLIPPAGE_SEED` (set a number for reproducible experiments). These mirror Groww + NSE statutory charges as of April 2026 — verify against a real contract note, don't tune for prettier paper profits.
 
 ## "Plumbing" (you can ignore these)
 

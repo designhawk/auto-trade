@@ -83,11 +83,13 @@ class PaperPortfolio:
     def __init__(
         self,
         initial_capital: float = 1_000_000,
-        brokerage_pct: float = 0.0003,    # 0.03% each side
+        brokerage_pct: float = 0.001,     # Groww: 0.1% per order ...
+        brokerage_cap: float = 20.0,      # ... or Rs.20, whichever is lower ...
+        brokerage_min: float = 5.0,       # ... floor Rs.5 (or 2.5% for tiny orders, SEBI cap)
         stt_pct: float = 0.00025,         # 0.025% SELL side only (equity intraday)
-        exchange_pct: float = 0.0000297,  # NSE ~0.00297% each side
+        exchange_pct: float = 0.000030699,  # NSE 0.0030699% each side (Apr 2026)
         sebi_pct: float = 0.000001,       # Rs.10/crore each side
-        stamp_pct: float = 0.00002,       # 0.002% BUY side only (intraday)
+        stamp_pct: float = 0.00003,       # 0.003% BUY side only (intraday, non-delivery)
         gst_pct: float = 0.18,            # 18% on brokerage+exchange+SEBI
         slippage_max_pct: float = 0.0004, # adverse slippage sampled U[0, max]
         slippage_seed: Optional[int] = None,
@@ -95,12 +97,15 @@ class PaperPortfolio:
         """
         Initialize paper portfolio.
 
-        Cost schedule follows NSE equity-intraday norms - verify line items
-        against your broker's contract note before trusting absolute P&L.
+        Defaults follow Groww (the broker this bot trades through) and NSE
+        statutory rates as of April 2026 - verify against your broker's
+        contract note before trusting absolute P&L.
 
         Args:
             initial_capital: Starting virtual capital
-            brokerage_pct: Brokerage fee as decimal
+            brokerage_pct: Brokerage fee as decimal (Groww 0.1%)
+            brokerage_cap: Per-order brokerage ceiling in Rs. (Groww Rs.20)
+            brokerage_min: Per-order brokerage floor in Rs. (Groww Rs.5)
             stt_pct: Securities transaction tax as decimal (sell only)
             exchange_pct: Exchange transaction charges as decimal
             sebi_pct: SEBI turnover fee as decimal
@@ -114,6 +119,8 @@ class PaperPortfolio:
         self.positions: Dict[str, Position] = {}
         self.transactions: List[Transaction] = []
         self.brokerage_pct = brokerage_pct
+        self.brokerage_cap = brokerage_cap
+        self.brokerage_min = brokerage_min
         self.stt_pct = stt_pct
         self.exchange_pct = exchange_pct
         self.sebi_pct = sebi_pct
@@ -126,9 +133,15 @@ class PaperPortfolio:
         self.total_other = 0.0
         self.total_slippage = 0.0
 
+    def _brokerage(self, gross_value: float) -> float:
+        """Per-order brokerage: lower of pct or cap, floored at min
+        (with the SEBI 2.5%-of-value cap for very small orders)."""
+        b = min(gross_value * self.brokerage_pct, self.brokerage_cap)
+        return max(b, min(self.brokerage_min, gross_value * 0.025))
+
     def _buy_costs(self, gross_value: float) -> tuple:
         """Return (brokerage, stt, stamp, exchange, sebi, gst) for a BUY."""
-        brokerage = gross_value * self.brokerage_pct
+        brokerage = self._brokerage(gross_value)
         exchange = gross_value * self.exchange_pct
         sebi = gross_value * self.sebi_pct
         stamp = gross_value * self.stamp_pct
@@ -137,7 +150,7 @@ class PaperPortfolio:
 
     def _sell_costs(self, gross_value: float) -> tuple:
         """Return (brokerage, stt, stamp, exchange, sebi, gst) for a SELL."""
-        brokerage = gross_value * self.brokerage_pct
+        brokerage = self._brokerage(gross_value)
         stt = gross_value * self.stt_pct
         exchange = gross_value * self.exchange_pct
         sebi = gross_value * self.sebi_pct

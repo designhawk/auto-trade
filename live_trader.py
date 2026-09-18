@@ -91,6 +91,8 @@ class LiveTrader:
         self.paper_portfolio = PaperPortfolio(
             initial_capital,
             brokerage_pct=config.BROKERAGE_PCT,
+            brokerage_cap=config.BROKERAGE_CAP,
+            brokerage_min=config.BROKERAGE_MIN,
             stt_pct=config.STT_PCT,
             exchange_pct=config.EXCHANGE_PCT,
             sebi_pct=config.SEBI_PCT,

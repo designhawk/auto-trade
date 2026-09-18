@@ -74,3 +74,14 @@ def test_partial_sell_allocates_buy_costs_proportionally():
     rb = p.execute_buy("X", 10, 100.0, stop_loss=98.0, take_profit=104.0)
     p.execute_sell("X", 4, 102.0)
     assert abs(p.positions["X"].cost_basis_total - rb["total_cost"] * 0.6) < 1e-6
+
+
+def test_groww_brokerage_schedule():
+    """Groww: 0.1% per order, lower of Rs.20, min Rs.5."""
+    p = PaperPortfolio(initial_capital=10_000_000, slippage_max_pct=0)
+    mid = p.execute_buy("A", 10, 660.0)      # 6,600 -> 0.1% = 6.60
+    assert abs(mid["brokerage"] - 6.60) < 1e-9
+    big = p.execute_buy("B", 10, 5_000.0)    # 50,000 -> capped at 20
+    assert abs(big["brokerage"] - 20.0) < 1e-9
+    small = p.execute_buy("C", 10, 300.0)    # 3,000 -> 0.1% = 3 -> floored at 5
+    assert abs(small["brokerage"] - 5.0) < 1e-9
