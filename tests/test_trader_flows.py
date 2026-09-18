@@ -133,6 +133,44 @@ def test_trade_cap_blocks_entries(tmpdb, monkeypatch):
     assert t2.paper_portfolio.has_position("E")  # under cap -> allowed
 
 
+def test_vix_filter_blocks_extreme(tmpdb, monkeypatch):
+    """VIX filter: entries pause in panic/euphoria regimes, not in normal ones."""
+    monkeypatch.setattr(LiveTrader, "_ist_now",
+                        staticmethod(lambda: datetime(2026, 1, 1, 11, 0)))
+    frames = {"E": {config.TRADE_INTERVAL: _breakout_5m(), "15m": _up_15m()}}
+
+    t1 = _trader(frames)
+    t1.watchlist = ["E"]
+    t1.vix_value = 30.0  # above VIX_MAX -> no entries
+    t1.on_bar()
+    assert not t1.paper_portfolio.has_position("E")
+
+    t2 = _trader(frames)
+    t2.watchlist = ["E"]
+    t2.vix_value = 15.0  # normal regime -> entry allowed
+    t2.on_bar()
+    assert t2.paper_portfolio.has_position("E")
+
+
+def test_vix_fail_open_without_quote(tmpdb):
+    """Missing VIX must never block trading."""
+    t = _trader({})
+    t._refresh_vix()  # fake broker has no get_quote -> must not raise
+    assert t.vix_value is None
+    assert t._vix_ok() is None  # unknown -> entry check passes
+
+
+def test_exclude_symbols_filters_universe(tmpdb, monkeypatch, tmp_path):
+    """Manual exclusion list (e.g. results-day names) removes from the scan."""
+    monkeypatch.setattr(config, "NSE_STOCKS", ["AAA", "BBB", "CCC"])
+    monkeypatch.setattr(config, "EXCLUDE_SYMBOLS", {"BBB"})
+    monkeypatch.setattr(db, "BACKUP_DIR", tmp_path / "backups")
+
+    t = _trader({})
+    t.pre_market()
+    assert t.universe == ["AAA", "CCC"]
+
+
 def test_entry_start_blocks_first_15min(tmpdb, monkeypatch):
     """Research: the first 15 minutes are false-breakout territory."""
     monkeypatch.setattr(LiveTrader, "_ist_now",

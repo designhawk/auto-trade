@@ -61,7 +61,7 @@ Practitioner guides agree strongly on timing:
 - Daily ATR ≥ ~1.5% (enough room to reach targets); VIX regime roughly **12–18** for ORB days (too low = no follow-through, too high = chaotic).
 - Avoid: penny stocks, illiquid small caps, circuit/ASM names, results-day stocks, huge gaps.
 
-**How we compare:** turnover floor (₹25cr), ATR band (1–6%), RVOL ≥ 1, gap >5% exclusion, NIFTY Total Market top-750 universe. **Not implemented:** a live India-VIX regime filter (needs an index data feed — candidate for later) and a results-calendar exclusion (no data path yet).
+**How we compare:** turnover floor (₹25cr), ATR band (1–6%), RVOL ≥ 1, gap >5% exclusion, NIFTY Total Market top-750 universe. **Implemented:** an India-VIX entry filter (`VIX_FILTER_ENABLED`, default guard 10–25; the practitioner sweet spot is 12–18 — tighten if you like) and a manual results-day workaround (`EXCLUDE_SYMBOLS=TCS,INFY` each morning). Still missing: an automatic results calendar (no data path).
 
 ## 6. Side-by-side
 
@@ -80,11 +80,11 @@ Practitioner guides agree strongly on timing:
 
 ## 7. The honest gap list
 
-1. **Short side.** Indian guides trade both directions; ORB research attributes most profit to the short leg. We're long-only.
-2. **VIX regime filter.** Widely recommended (12–18 sweet spot); we lack index data wiring.
-3. **Results/earnings calendar.** Named in every "avoid" list; no data path via our broker API yet.
+1. **Short side.** Indian guides trade both directions; ORB research attributes most profit to the short leg. We're long-only. **This is the big one — it needs a dedicated strategy build, not a config fix.**
+2. ~~VIX regime filter~~ **Done:** `VIX_FILTER_ENABLED` (10–25 default guard, entries-only, fail-open).
+3. **Results/earnings calendar.** Named in every "avoid" list. **Workaround in place:** `EXCLUDE_SYMBOLS=TCS,INFY` manual bans; an automatic calendar would need a new data source.
 4. **MIS leverage.** Everyone uses it; the data says it mostly multiplies losses. We deliberately don't model it — the paper account trades cash-only.
-5. **Reversal setups.** We only do breakout momentum; PDH/PDL and VWAP-bounce reversals are unaddressed.
+5. **Reversal setups.** We only do breakout momentum; PDH/PDL and VWAP-bounce reversals are unaddressed — candidates for a second `BaseStrategy` implementation.
 
 ## Sources
 

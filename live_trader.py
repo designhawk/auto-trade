@@ -106,6 +106,7 @@ class LiveTrader:
         self.watchlist: List[str] = []
         self.ranked_all: List[dict] = []  # full pre-market ranking (reserves live here)
         self._reselect_done: set = set()  # (date, hh, mm) already re-ranked
+        self.vix_value: Optional[float] = None  # India VIX regime (None = unknown)
         self.session_start_capital = initial_capital
 
         log.info(f"LiveTrader initialized. Mode: {'LIVE' if is_live else 'PAPER'}")
@@ -162,9 +163,14 @@ class LiveTrader:
         log.info("PRE-MARKET: Selecting top momentum stocks...")
         log.info("=" * 60)
 
-        # Universe of stocks to evaluate
+        # Universe of stocks to evaluate (minus the manual exclusion list,
+        # e.g. today's results names)
         if not self.universe:
-            self.universe = config.NSE_STOCKS
+            self.universe = [s for s in config.NSE_STOCKS
+                             if s not in config.EXCLUDE_SYMBOLS]
+            excluded = sorted(config.EXCLUDE_SYMBOLS & set(config.NSE_STOCKS))
+            if excluded:
+                log.info(f"Excluded {len(excluded)} symbol(s): {excluded}")
 
         try:
             # Rank the full universe on daily data (works at any time),
@@ -191,6 +197,7 @@ class LiveTrader:
             log.info(f"Using fallback watchlist: {len(self.watchlist)} stocks")
 
         self._subscribe_feed()
+        self._refresh_vix()
 
     def _subscribe_feed(self) -> None:
         """Subscribe the watchlist to streaming LTP (no-op if unsupported)."""
@@ -200,6 +207,31 @@ class LiveTrader:
                 starter(self.watchlist)
             except Exception as e:
                 log.error(f"Feed subscribe failed: {e}")
+
+    def _refresh_vix(self) -> None:
+        """
+        Fetch India VIX for the regime filter. Never raises; failure leaves
+        vix_value None which the entry check treats as "unknown" (fail-open).
+        """
+        if not config.VIX_FILTER_ENABLED:
+            return
+        try:
+            quote = self.broker.get_quote("INDIAVIX")
+            self.vix_value = float(quote.ltp) if quote.ltp else None
+        except Exception as e:
+            self.vix_value = None
+            log.error(f"VIX unavailable ({str(e)[:60]}) - filter fail-open")
+            return
+        if self.vix_value is not None:
+            ok = config.VIX_MIN <= self.vix_value <= config.VIX_MAX
+            log.info(f"India VIX: {self.vix_value:.2f} "
+                     f"({'ok' if ok else 'OUTSIDE entries range'})")
+
+    def _vix_ok(self) -> Optional[bool]:
+        """True/False when the filter is active and VIX known; None otherwise."""
+        if not config.VIX_FILTER_ENABLED or self.vix_value is None:
+            return None
+        return config.VIX_MIN <= self.vix_value <= config.VIX_MAX
 
     def maybe_reselect(self) -> None:
         """Re-rank watchlist at configured times (default 09:30, 11:00 IST)."""
@@ -245,6 +277,7 @@ class LiveTrader:
         self.watchlist = keep[: config.TOP_STOCKS]
         log.info(f"RESELECT: dropped={dropped} added={added} watchlist={len(self.watchlist)}")
         self._subscribe_feed()
+        self._refresh_vix()
 
     def on_bar(self) -> None:
         """
@@ -427,14 +460,17 @@ class LiveTrader:
                 if t.get("side") == "BUY"
             )
             capped = buys_today >= config.MAX_TRADES_PER_DAY
+        vix_ok = self._vix_ok()
         entries_open = (
             (config.ENTRY_START_HOUR, config.ENTRY_START_MINUTE) <= hm
             < (config.ENTRY_CUTOFF_HOUR, config.ENTRY_CUTOFF_MINUTE)
             and not in_lunch_pause
             and not capped
+            and vix_ok is not False
         )
         if not entries_open:
-            why = ("lunch-lull pause" if in_lunch_pause
+            why = ("VIX outside entries range" if vix_ok is False
+                   else "lunch-lull pause" if in_lunch_pause
                    else "daily trade cap reached" if capped
                    else "outside entry window")
             log.info(f"No new entries this bar ({why})")

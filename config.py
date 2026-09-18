@@ -133,6 +133,18 @@ class Config:
     ENTRY_PAUSE_START = _parse_hhmm(os.getenv("ENTRY_PAUSE_START", "11:45"), (11, 45))
     ENTRY_PAUSE_END = _parse_hhmm(os.getenv("ENTRY_PAUSE_END", "13:30"), (13, 30))
     MAX_TRADES_PER_DAY = int(os.getenv("MAX_TRADES_PER_DAY", "6"))  # 0 = unlimited
+
+    # India VIX regime filter (practitioner guidance: 12-18 is the breakout
+    # sweet spot; wide guard by default). Fail-open when VIX is unavailable.
+    VIX_FILTER_ENABLED = os.getenv("VIX_FILTER_ENABLED", "true").lower() == "true"
+    VIX_MIN = float(os.getenv("VIX_MIN", "10"))
+    VIX_MAX = float(os.getenv("VIX_MAX", "25"))
+
+    # Manual exclusion list, e.g. today's results names:
+    #   EXCLUDE_SYMBOLS=TCS,INFY
+    EXCLUDE_SYMBOLS = {s.strip().upper()
+                       for s in os.getenv("EXCLUDE_SYMBOLS", "").split(",")
+                       if s.strip()}
     SCALE_START_HOUR = 15
     SCALE_START_MINUTE = 0  # staged profit-taking begins
     FULL_EXIT_HOUR = 15
