@@ -25,9 +25,32 @@ from functools import wraps
 import pytz
 import pandas as pd
 import pyotp
+import requests
+import requests.api as _requests_api
+from requests.adapters import HTTPAdapter
 from dotenv import load_dotenv
 
 from broker_client import BrokerClient, Quote
+
+# --- Connection pooling patch ---------------------------------------------
+# growwapi calls bare requests.get/post, and each bare call creates a fresh
+# Session -> a full TLS handshake per API call. py-spy profiling
+# (2026-09-18) showed 94% of trader CPU in ssl_wrap_socket during ticks
+# (~90 calls/min). Route all requests through one shared pooled Session:
+# handshakes happen once per connection, then keep-alive is reused.
+_POOLED_SESSION = requests.Session()
+_POOLED_ADAPTER = HTTPAdapter(pool_connections=10, pool_maxsize=20)
+_POOLED_SESSION.mount("https://", _POOLED_ADAPTER)
+_POOLED_SESSION.mount("http://", _POOLED_ADAPTER)
+
+
+def _pooled_request(method, url, **kwargs):
+    """Same signature as requests.api.request, but on a pooled session."""
+    return _POOLED_SESSION.request(method, url, **kwargs)
+
+
+if _requests_api.request is not _pooled_request:  # idempotent
+    _requests_api.request = _pooled_request
 
 
 def retry_on_error(max_retries: int = 3, delay: float = 1.0):

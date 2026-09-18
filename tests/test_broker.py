@@ -81,6 +81,48 @@ def test_get_ohlcv_bad_interval():
         b.get_ohlcv("RELIANCE", "9m", 50)
 
 
+def test_requests_routed_through_pooled_session():
+    """The SDK calls bare requests.get/post; our patch must pool connections
+    (a TLS handshake per call was 94% of trader CPU - py-spy, 2026-09-18)."""
+    import http.server
+    import threading
+
+    import requests
+    import requests.api as requests_api
+    import groww_broker  # noqa: F401  (installs the patch)
+
+    assert requests_api.request is groww_broker._pooled_request
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"  # keep-alive
+        connections = 0
+
+        def setup(self):
+            type(self).connections += 1
+            super().setup()
+
+        def do_GET(self):
+            body = b"ok"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}/x"
+        requests.get(url, timeout=3)
+        requests.get(url, timeout=3)
+        assert _Handler.connections == 1, _Handler.connections
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_get_ltp_chunks_over_50():
     b = GrowwBroker()
     fake = _FakeClient()
