@@ -42,6 +42,7 @@ class IntradayMomentumStrategy(BaseStrategy):
         vwap_required: bool = True,  # require close above session VWAP
         stop_atr_mult: float = 1.5,  # stop distance in ATRs (widen on 1m)
         recent_low_bars: int = 5,  # recent-low window for the stop floor
+        min_stop_pct: float = 0.0,  # minimum stop distance (0 = no floor)
     ):
         self.lookback = lookback
         self.volume_multiplier = volume_multiplier
@@ -53,6 +54,7 @@ class IntradayMomentumStrategy(BaseStrategy):
         self.vwap_required = vwap_required
         self.stop_atr_mult = stop_atr_mult
         self.recent_low_bars = recent_low_bars
+        self.min_stop_pct = min_stop_pct
         self.last_signal_bar = {}
 
     @property
@@ -202,6 +204,15 @@ class IntradayMomentumStrategy(BaseStrategy):
             # Calculate stop loss (use ATR or recent low, whichever is tighter)
             atr_stop = current_price - (atr * self.stop_atr_mult)
             stop_loss = max(recent_low, atr_stop)
+
+            # Widen stops that sit inside the noise floor. On fast bars the
+            # raw stop can be 0.2-0.4% away, which makes a "2R" target so
+            # small that costs eat it and normal noise stops it out.
+            # Sizing compensates (risk-based), so wider stop != more risk.
+            if self.min_stop_pct > 0:
+                floor_stop = current_price * (1 - self.min_stop_pct)
+                if stop_loss > floor_stop:
+                    stop_loss = floor_stop
 
             # Check if stop loss is within acceptable range
             risk_per_share = current_price - stop_loss

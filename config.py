@@ -67,9 +67,10 @@ class Config:
     TRADE_INTERVAL_MINUTES = max(1, TRADE_INTERVAL_SECONDS // 60)
 
     # Stop construction (wider stops matter more on faster bars where
-    # per-bar noise is small; both knobs are env-overridable)
+    # per-bar noise is small; all three knobs are env-overridable)
     STOP_ATR_MULT = float(os.getenv("STOP_ATR_MULT", "1.5"))
     RECENT_LOW_BARS = int(os.getenv("RECENT_LOW_BARS", "5"))
+    MIN_STOP_PCT = float(os.getenv("MIN_STOP_PCT", "0.0075"))  # noise floor
 
     # Volatility gate bounds (ATR%%), interval-scaled from the 5m baseline
     _VOL_MIN, _VOL_MAX = _volatility_bounds(TRADE_INTERVAL_SECONDS)

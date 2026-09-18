@@ -851,6 +851,7 @@ def main():
         vwap_required=config.VWAP_REQUIRED,
         stop_atr_mult=config.STOP_ATR_MULT,
         recent_low_bars=config.RECENT_LOW_BARS,
+        min_stop_pct=config.MIN_STOP_PCT,
     )
 
     # Create trader

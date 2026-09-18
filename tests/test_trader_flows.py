@@ -180,6 +180,25 @@ def test_entry_fetch_covers_lookback(tmpdb, monkeypatch):
     t.on_bar()  # the fetch assertion is the point; signal may not fire
 
 
+def test_min_stop_pct_floor_widens_stops(tmpdb):
+    """A noise-floor stop keeps fast-bar targets economically meaningful."""
+    floored = IntradayMomentumStrategy(volume_multiplier=0.5, cooldown_bars=0,
+                                       min_stop_pct=0.02, max_stop_loss_pct=0.05)
+    natural = IntradayMomentumStrategy(volume_multiplier=0.5, cooldown_bars=0,
+                                       max_stop_loss_pct=0.05)
+    s_floored = floored.generate_signals("X", _breakout_5m(), _up_15m())
+    s_natural = natural.generate_signals("X", _breakout_5m(), _up_15m())
+    assert s_floored and s_natural
+    entry = s_floored[0].entry_price
+    risk_pct = (entry - s_floored[0].stop_loss) / entry
+    # signal levels are rounded to 2dp, hence the loose tolerance
+    assert abs(risk_pct - 0.02) < 1e-3, risk_pct          # floor binds
+    assert s_floored[0].stop_loss < s_natural[0].stop_loss  # wider stop
+    # 2R target is now at least 4% away
+    tp_pct = (s_floored[0].take_profit - entry) / entry
+    assert abs(tp_pct - 0.04) < 1e-3, tp_pct
+
+
 def test_wider_stop_params_lower_the_stop(tmpdb):
     """stop_atr_mult + recent_low_bars widen (lower) the protective stop."""
     narrow = IntradayMomentumStrategy(volume_multiplier=0.5, cooldown_bars=0)

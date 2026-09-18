@@ -36,7 +36,7 @@ Plus one housekeeping rule: **cooldown** — after trading a stock, the bot igno
 The bot creates a **signal** — a little plan that says:
 
 - **Entry price:** buy around the current price
-- **Stop-loss:** the higher (tighter) of (a) the lowest price of the last `RECENT_LOW_BARS` bars, or (b) current price minus `STOP_ATR_MULT` × its normal wiggle-room (ATR). If even that safety net is too wide (more than `MAX_STOP_LOSS_PCT` away), the whole trade is cancelled — too risky.
+- **Stop-loss:** the higher (tighter) of (a) the lowest price of the last `RECENT_LOW_BARS` bars, or (b) current price minus `STOP_ATR_MULT` × its normal wiggle-room (ATR) — then floored at `MIN_STOP_PCT` (0.75%) so the stop never sits inside the noise. If even the widened stop is too far (more than `MAX_STOP_LOSS_PCT` away), the trade is cancelled.
 - **Take-profit:** entry + 2× the risk. Risk ₹2 per share → aim to make ₹4. That's the "1:2 risk-reward" rule.
 - **Confidence:** a 0–1 score from volume strength and trend strength. Higher confidence = slightly bigger position (see Risk Management).
 
@@ -54,7 +54,7 @@ The numbers above describe **5-minute bars**. Because a bar means something diff
 
 - **Auto-scaled:** the volatility gate (0.3%–4% ATR on 5m) scales with the interval — about **0.13%–1.79% on 1m** and 0.5%–6.9% on 15m — so "dead bars" and "wild bars" mean the same thing at any speed. Override with `MIN_VOLATILITY_PCT` / `MAX_VOLATILITY_PCT` if you disagree.
 - **Set these together when you change interval.** Recommended 1m starting set: `LOOKBACK=60` (60-min breakout window), `COOLDOWN_BARS=30` (30 min), `STOP_ATR_MULT=2.5` + `RECENT_LOW_BARS=15` (wider stops: 1-minute noise is tiny, and a stop that hugs the last 5 minutes gets shaken out), `MAX_STOP_LOSS_PCT=0.01` (1% cap), `SCRATCH_BARS=30` (give a dead trade 30 min, not 30 × 1-minute panic).
-- **Why wider stops matter on 1m:** costs (~0.1–0.15% round trip) are the same on every interval, but 1m targets are smaller — a tiny stop makes costs eat most of the reward.
+- **Why wider stops matter on 1m:** costs (~0.1–0.15% round trip) are the same on every interval, but 1m targets are smaller — a tiny stop makes costs eat most of the reward. With `MIN_STOP_PCT=0.0075`, a 2R trade aims for **at least 1.5%** — realistic for NSE intraday moves. Chasing 4%+ targets would need ~2% stops and much lower hit rates.
 
 ## Beginner takeaways
 
