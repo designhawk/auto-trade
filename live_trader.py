@@ -132,6 +132,12 @@ class LiveTrader:
         return 0.0
 
     @staticmethod
+    def _session_over(now_ist) -> bool:
+        """True once the session hard-stops (15:25). Tuple compare: separate
+        hour/minute checks read 16:05 as still open (hour>=15 but min<25)."""
+        return (now_ist.hour, now_ist.minute) >= (15, 25)
+
+    @staticmethod
     def _sell_row(symbol, result, exit_reason, pos=None):
         """Build a trades-table row for a SELL (costs + MFE/MAE included)."""
         row = {
@@ -861,7 +867,7 @@ class LiveTrader:
                 log.info(f"Market check: {current_hour}:{current_minute}")
 
                 # Stop after market close (3:25 PM)
-                if current_hour >= 15 and current_minute >= 25:
+                if self._session_over(now):
                     log.info("Market closed. Stopping trading loop.")
                     break
 
@@ -870,7 +876,7 @@ class LiveTrader:
                 market_open = (current_hour > 9) or (
                     current_hour == 9 and current_minute >= 15
                 )
-                market_close = current_hour >= 15 and current_minute >= 25
+                market_close = self._session_over(now)
 
                 if market_open and not market_close:
                     log.info("Calling on_bar...")

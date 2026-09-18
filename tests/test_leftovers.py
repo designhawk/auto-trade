@@ -40,6 +40,19 @@ def test_config_parse_and_ordering():
     assert config.STOP_ATR_MULT > 0 and config.RECENT_LOW_BARS >= 1
 
 
+def test_session_stop_is_tuple_compare():
+    """After-hours restarts in a :00-:24 window (16:05) used to read as
+    'market open' and keep running on_bar until the next :25."""
+    from live_trader import LiveTrader
+
+    assert not LiveTrader._session_over(datetime(2026, 9, 18, 9, 14))
+    assert not LiveTrader._session_over(datetime(2026, 9, 18, 15, 24))
+    assert LiveTrader._session_over(datetime(2026, 9, 18, 15, 25))
+    assert LiveTrader._session_over(datetime(2026, 9, 18, 16, 5))
+    assert LiveTrader._session_over(datetime(2026, 9, 18, 17, 0))
+    assert LiveTrader._session_over(datetime(2026, 9, 18, 23, 59))
+
+
 def test_volatility_bounds_scale_with_interval():
     from config import _volatility_bounds
 
