@@ -20,6 +20,13 @@ from paths import LOG_DIR
 # Create logs directory
 LOG_DIR.mkdir(exist_ok=True)
 
+# Quiet noisy third-party SDK internals. growwapi's NATS/feed client logs raw
+# "Error:" lines (with empty messages) while its socket retries, and can spin
+# there for a long time. Feed health is surfaced through our own [FEED]
+# messages in groww_broker instead - see docs/BROKER.md.
+logging.getLogger("growwapi").setLevel(logging.CRITICAL)
+logging.getLogger("nats").setLevel(logging.CRITICAL)
+
 
 def get_logger(name: str) -> logging.Logger:
     """

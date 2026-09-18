@@ -168,6 +168,15 @@ def test_tui_app_lifecycle(monkeypatch):
     asyncio.run(run())
 
 
+def test_sdk_noise_loggers_quieted():
+    """The SDK's feed client logged raw 'Error:' spam; it must stay quiet."""
+    import logging
+    import logger  # noqa: F401  (import applies the levels)
+
+    assert logging.getLogger("growwapi").level == logging.CRITICAL
+    assert logging.getLogger("nats").level == logging.CRITICAL
+
+
 def test_tail_file_last_n(tmp_path, capsys):
     f = tmp_path / "t.log"
     f.write_text("\n".join(f"L{i}" for i in range(8)) + "\n")
