@@ -284,6 +284,8 @@ def test_end_session_writes_daily_report(tmpdb, monkeypatch, tmp_path):
     text = report.read_text(encoding="utf-8")
     assert "# Trading report" in text
     assert "Trades: 1 buys / 1 sells" in text and "TAKE_PROFIT" in text
+    html = tmp_path / "reports" / f"{datetime.now().date().isoformat()}.html"
+    assert html.exists() and "<!doctype html>" in html.read_text(encoding="utf-8")
 
 
 def test_entry_fetch_covers_lookback(tmpdb, monkeypatch):

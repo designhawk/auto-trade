@@ -3,9 +3,10 @@ from datetime import datetime
 
 import db
 from report import build_report
+from report_html import build_html_report
 
 
-def test_report_sections(tmpdb):
+def _seed_day():
     now = datetime.now().isoformat()
     db.insert_trade({"timestamp": now, "symbol": "RELIANCE", "side": "BUY",
                      "qty": 10, "price": 100.0, "value": 1000.0})
@@ -30,6 +31,9 @@ def test_report_sections(tmpdb):
                       "take_profit": 12.0, "reason": "t", "approved": False,
                       "rejection_reason": "Weak", "adjusted_qty": 0, "strategy": "S"})
 
+
+def test_report_sections(tmpdb):
+    _seed_day()
     rep = build_report(datetime.now().date().isoformat())
     assert "1W/1L" in rep and "Win rate: 50.0%" in rep
     assert "TAKE_PROFIT" in rep and "STOP_LOSS" in rep
@@ -42,3 +46,21 @@ def test_report_sections(tmpdb):
 def test_report_empty_day(tmpdb):
     rep = build_report("1999-01-01")
     assert "0 buys / 0 sells" in rep and "No excursion data" in rep
+
+
+def test_html_report_sections(tmpdb):
+    _seed_day()
+    html = build_html_report(datetime.now().date().isoformat())
+    assert "<!doctype html>" in html and "</html>" in html
+    assert "<details" in html  # per-trade drill-down
+    assert "Round trips (2)" in html and "RELIANCE" in html
+    assert "TAKE_PROFIT" in html and "STOP_LOSS" in html
+    assert "Profit factor" in html and "Weak" in html
+    assert "Sector attribution" in html and "ENERGY" in html
+    assert "svg" in html  # charts render
+
+
+def test_html_report_empty_day(tmpdb):
+    html = build_html_report("1999-01-01")
+    assert "<!doctype html>" in html
+    assert "No trades this day." in html and "No signals this day." in html

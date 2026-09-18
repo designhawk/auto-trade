@@ -116,8 +116,19 @@ def main():
     parser = argparse.ArgumentParser(description="Daily trading report")
     parser.add_argument("--date", default=date.today().isoformat(),
                         help="Session date YYYY-MM-DD (default: today)")
+    parser.add_argument("--html", action="store_true",
+                        help="write reports/YYYY-MM-DD.html (self-contained)")
     args = parser.parse_args()
-    print(build_report(args.date))
+    if args.html:
+        from paths import REPORT_DIR
+        from report_html import build_html_report
+
+        REPORT_DIR.mkdir(exist_ok=True)
+        out = REPORT_DIR / f"{args.date}.html"
+        out.write_text(build_html_report(args.date), encoding="utf-8")
+        print(f"HTML report written: {out}")
+    else:
+        print(build_report(args.date))
 
 
 if __name__ == "__main__":

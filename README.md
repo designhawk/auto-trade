@@ -42,7 +42,7 @@ All of this is recorded in a small database file on your computer, and you can w
 | 14:45 | Stops opening new trades | No last-minute gambles |
 | 15:00–15:10 | Gradually sells everything | Goes home flat, no overnight risk |
 | 15:25 | Emergency sell-all (backup) | Guarantees nothing is held overnight |
-| After close | Writes your report card | Read it with `python report.py` |
+| After close | Writes your report card | Auto-saved to `reports/` (`.md` + `.html`); rebuild any day with `python report.py` |
 
 ## Getting started
 
@@ -66,7 +66,8 @@ That's it — the bot starts its website (for the dashboard) and the trader. In 
 | `python monitor.py` | Live terminal dashboard — portfolio, positions with R-multiples, today's signals/trades, feed & tick health, color-coded logs. |
 | `python monitor_tui.py` | Full-screen TUI (Textual) — always-on system/portfolio/regime panels, tabs for **Live Log** (streaming, colorized), Positions, Signals, Trades, Watchlist; keys `q` quit / `p` pause data / `r` refresh / `c` clear log. |
 | `python logs.py trader -f` | Watch the trader's diary in real time. |
-| `python report.py` | Yesterday's/today's report card (profit, win rate, costs, lessons). |
+| `python report.py` | Yesterday's/today's report card in the terminal (profit, win rate, costs, lessons). |
+| `python report.py --html` | Visual report: KPI dashboard, equity curve, per-trade drill-down → `reports/YYYY-MM-DD.html`. |
 | `python -m pytest tests/ -q` | Self-check: 41 automated tests proving the parts work. |
 
 Dashboard in your browser: http://localhost:8002/docs

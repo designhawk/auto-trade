@@ -30,3 +30,4 @@ frontend/dist/
 .vscode/
 .idea/
 reports/
+.playwright-mcp/

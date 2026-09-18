@@ -804,17 +804,19 @@ class LiveTrader:
             )
             log.info(f"  Remaining Positions: {len(positions)}")
 
-            # Write the day's Markdown report (reports/ is gitignored, local only)
+            # Write the day's reports (reports/ is gitignored, local only)
             try:
                 from paths import REPORT_DIR
                 from report import build_report
+                from report_html import build_html_report
 
                 REPORT_DIR.mkdir(exist_ok=True)
-                report_path = REPORT_DIR / f"{date.today().isoformat()}.md"
-                report_path.write_text(
-                    build_report(date.today().isoformat()), encoding="utf-8"
-                )
-                log.info(f"Daily report saved: {report_path}")
+                day = date.today().isoformat()
+                md_path = REPORT_DIR / f"{day}.md"
+                html_path = REPORT_DIR / f"{day}.html"
+                md_path.write_text(build_report(day), encoding="utf-8")
+                html_path.write_text(build_html_report(day), encoding="utf-8")
+                log.info(f"Daily reports saved: {md_path.name}, {html_path.name}")
             except Exception as e:
                 log.error(f"Report write failed: {e}")
 
