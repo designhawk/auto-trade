@@ -68,7 +68,7 @@ That's it — the bot starts its website (for the dashboard) and the trader. In 
 | `python logs.py trader -f` | Watch the trader's diary in real time. |
 | `python report.py` | Yesterday's/today's report card in the terminal (profit, win rate, costs, lessons). |
 | `python report.py --html` | Visual report: KPI dashboard, equity curve, per-trade drill-down → `reports/YYYY-MM-DD.html`. |
-| `python -m pytest tests/ -q` | Self-check: 41 automated tests proving the parts work. |
+| `python -m pytest tests/ -q` | Self-check: 117 automated tests proving the parts work. |
 
 Dashboard in your browser: http://localhost:8002/docs
 

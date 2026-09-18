@@ -12,7 +12,7 @@ Prices flow in from Groww through three pipes (history charts, quick price check
 Morning                        All day, every bar                Evening
 ───────                        ───────────────────              ───────
 Groww prices ──► SELECTOR ──► watchlist of 30 ──► TRADER ──► sells everything
-   (charts)       (grades +       (the squad)        │          (15:00–15:25)
+   (charts)       (grades +       (the squad)        │          (15:00–15:10)
    feed on                             ┌─────────────┴──────────────┐
                                        │  per stock: STRATEGY says  │
                                        │  "buy?" → RISK says        │
@@ -35,7 +35,7 @@ Groww prices ──► SELECTOR ──► watchlist of 30 ──► TRADER ─�
 | Part | Job in one line | If it breaks... |
 |---|---|---|
 | **Launcher** (`run.py`) | Starts the trader + website together | Start pieces manually (`api.py`, `live_trader.py`) |
-| **Trader** (`live_trader.py`) | The conductor: morning prep, 5-min loop, evening shutdown | Nothing trades — check logs first |
+| **Trader** (`live_trader.py`) | The conductor: morning prep, per-bar loop (`TRADE_INTERVAL`), evening shutdown | Nothing trades — check logs first |
 | **Selector** (`stock_selector.py`) | Picks the 30-stock squad + mid-morning swaps | Falls back to a default list, keeps going |
 | **Strategy** (`intraday_strategy.py`) | Proposes buys (7 strict checks) | No signals = quiet day, usually correct |
 | **Risk manager** (`risk_manager.py`) | Vetoes anything dangerous (10 gates) | Rejections logged with reasons — read them |
@@ -44,7 +44,7 @@ Groww prices ──► SELECTOR ──► watchlist of 30 ──► TRADER ─�
 | **Diary** (`db.py` → `trading.db`) | Remembers everything, backs itself up | Restore from `backups/` |
 | **Dashboard/API** (`api.py`) | Website of live numbers | Trader keeps working without it |
 | **Monitor / Logs** | Terminal views into the diary | Cosmetic only — data is safe |
-| **Report** (`report.py`) | Evening report card | Re-run anytime; reads diary only |
+| **Report** (`report.py` + `report_html.py`) | Evening report card — terminal Markdown + visual HTML | Re-run anytime; reads diary only |
 | **Config / Sectors / Paths** | Settings, sector map, file locations | Wrong settings = strange behavior; check `.env` |
 
 ## Design choices worth knowing (and why)
