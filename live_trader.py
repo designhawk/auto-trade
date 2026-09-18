@@ -245,13 +245,19 @@ class LiveTrader:
                 break
 
     def _do_reselect(self) -> None:
-        """Score watchlist + reserves on 5m action; keep the best top_n."""
+        """
+        Score watchlist + reserves on intraday action.
+
+        Persistent mode (default, paper): names are only ever ADDED (up to
+        WATCHLIST_MAX). Classic mode: re-rank down to TOP_STOCKS each slot.
+        Either way, held symbols are never evicted - re-ranking only
+        affects future entries.
+        """
         if not self.ranked_all:
             return
         reserve_syms = [
             m["symbol"] for m in self.ranked_all if m["symbol"] not in self.watchlist
         ][:20]
-        # Never evict symbols we hold - re-ranking only affects entries
         held = {pos.symbol for pos in self.paper_portfolio.get_positions()}
         candidates = [s for s in self.watchlist if s not in held] + reserve_syms
 
@@ -266,15 +272,31 @@ class LiveTrader:
                 log.error(f"Reselect: skipping {symbol}: {e}")
         scored.sort(reverse=True)
 
-        keep = [s for s in self.watchlist if s in held]
-        for _, symbol in scored:
-            if symbol not in keep:
-                keep.append(symbol)
-            if len(keep) >= config.TOP_STOCKS:
-                break
-        dropped = [s for s in self.watchlist if s not in keep]
-        added = [s for s in keep if s not in self.watchlist]
-        self.watchlist = keep[: config.TOP_STOCKS]
+        if config.WATCHLIST_PERSISTENT:
+            max_size = max(config.TOP_STOCKS, config.WATCHLIST_MAX)
+            keep = list(self.watchlist)
+            for sym in held:  # safety: never lose a held symbol
+                if sym not in keep:
+                    keep.append(sym)
+            added = []
+            for _, symbol in scored:
+                if len(keep) >= max_size:
+                    break
+                if symbol not in keep:
+                    keep.append(symbol)
+                    added.append(symbol)
+            dropped = []
+        else:
+            keep = [s for s in self.watchlist if s in held]
+            for _, symbol in scored:
+                if symbol not in keep:
+                    keep.append(symbol)
+                if len(keep) >= config.TOP_STOCKS:
+                    break
+            dropped = [s for s in self.watchlist if s not in keep]
+            added = [s for s in keep if s not in self.watchlist]
+
+        self.watchlist = keep
         log.info(f"RESELECT: dropped={dropped} added={added} watchlist={len(self.watchlist)}")
         self._subscribe_feed()
         self._refresh_vix()

@@ -33,7 +33,7 @@ Even if 10 banks top the list, the bot takes at most **3 per sector**. Ten bank 
 
 ## Step 4: Re-check at 9:30 and 11:00 (the mid-morning reality check)
 
-The morning list is a prediction; the market is the answer. Twice mid-morning the bot re-scores the watchlist on live intraday action (distance from VWAP, fresh trend, live volume, RSI) and swaps dull names for livelier reserves. One evidence-backed gate applies here: a stock whose recent volume has dropped **below its own average** (relative volume < 1) is dropped — "not in play" days have negative average expectancy in the published research. **One golden rule: stocks you already own are never evicted** — re-ranking only changes *future* entries, never disturbs open trades.
+The morning list is a prediction; the market is the answer. Twice mid-morning the bot re-scores the watchlist on live intraday action (distance from VWAP, fresh trend, live volume, RSI) and promotes livelier reserves. In paper mode (default) the watchlist **only grows** — re-ranks add names but never drop them (up to `WATCHLIST_MAX=60`), so a stock that wakes up just after a re-rank is still scanned. Set `WATCHLIST_PERSISTENT=false` for classic top-N swapping. One evidence-backed gate applies to every promotion: a stock whose recent volume has dropped **below its own average** (relative volume < 1) is not added — "not in play" days have negative average expectancy in the published research. **One golden rule: stocks you already own are never evicted** — re-ranking only changes *future* entries, never disturbs open trades.
 
 ## Beginner takeaways
 

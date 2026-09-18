@@ -203,6 +203,7 @@ def test_reselect_promotes_and_protects_held(tmpdb, monkeypatch):
                         staticmethod(lambda: datetime(2026, 1, 1, 10, 5)))
     monkeypatch.setattr(config, "RESELECT_TIMES", [(10, 0)])
     monkeypatch.setattr(config, "TOP_STOCKS", 2)  # force an eviction
+    monkeypatch.setattr(config, "WATCHLIST_PERSISTENT", False)  # classic mode
     hot = _breakout_5m()
     t = _trader({"HOLD": _flat_5m(100.0), "DULL": _flat_5m(50.0), "HOT": hot})
     t.paper_portfolio.execute_buy("HOLD", 10, 100.0, stop_loss=98.0, take_profit=104.0)
@@ -215,6 +216,25 @@ def test_reselect_promotes_and_protects_held(tmpdb, monkeypatch):
     before = list(t.watchlist)
     t.maybe_reselect()
     assert t.watchlist == before
+
+
+def test_reselect_persistent_never_drops(tmpdb, monkeypatch):
+    """Paper mode (default): names are only ever ADDED during the day, so a
+    stock dropping off the re-rank just before it wakes up cannot happen."""
+    monkeypatch.setattr(LiveTrader, "_ist_now",
+                        staticmethod(lambda: datetime(2026, 1, 1, 10, 5)))
+    monkeypatch.setattr(config, "RESELECT_TIMES", [(10, 0)])
+    monkeypatch.setattr(config, "WATCHLIST_PERSISTENT", True)
+    monkeypatch.setattr(config, "WATCHLIST_MAX", 10)
+    hot = _breakout_5m()
+    t = _trader({"HOLD": _flat_5m(100.0), "DULL": _flat_5m(50.0), "HOT": hot})
+    t.paper_portfolio.execute_buy("HOLD", 10, 100.0, stop_loss=98.0, take_profit=104.0)
+    t.watchlist = ["HOLD", "DULL"]
+    t.ranked_all = [{"symbol": "HOLD"}, {"symbol": "DULL"}, {"symbol": "HOT"}]
+    t.maybe_reselect()
+    # nothing dropped, HOT added, held protected
+    assert {"HOLD", "DULL", "HOT"} <= set(t.watchlist)
+    assert len(t.watchlist) <= 10
 
 
 def test_force_close_normal(tmpdb, monkeypatch):

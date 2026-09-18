@@ -15,6 +15,7 @@ All settings live in one file: **`.env`** (your private copy; `.env.example` sho
 | Setting | Default | What happens if you change it |
 |---|---|---|
 | `TOP_STOCKS` | 30 | Watchlist size. Fewer = more focused, more API calls per stock; more = broader, noisier. |
+| `WATCHLIST_PERSISTENT` / `WATCHLIST_MAX` | true / 60 | Paper-mode default: the watchlist only ever **grows** through the day (re-ranks add, never drop), so late-waking names aren't missed. `false` = classic top-N swapping at each re-rank; `WATCHLIST_MAX` caps growth. |
 | `MIN_DAILY_ATR_PCT` / `MAX_DAILY_ATR_PCT` | 1.0 / 6.0 | Daily movement band. Below 1% = too sleepy to reach intraday targets; above 6% = news/circuit chaos. Evidence: docs/RESEARCH.md. |
 | `MIN_TURNOVER_CR` | ₹25cr | Median daily traded value (price × volume). Rupee liquidity, not share count — lets you exit without slippage. |
 | `MIN_RVOL` | 1.0 | "Stock in play" floor at re-rank: recent volume must be at least average. Below-average activity has negative expectancy (Zarattini et al. 2024). |

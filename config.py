@@ -175,6 +175,12 @@ class Config:
 
     # Selection settings
     TOP_STOCKS = int(os.getenv("TOP_STOCKS", "30"))  # Select top 30 from universe
+    # Watchlist policy. Persistent (default, paper mode): names are only ever
+    # ADDED during the day - a stock dropped just before it wakes up is how
+    # opportunities get missed (observed 2026-09-18: REDINGTON/SANSERA).
+    # Classic top-N swapping each re-rank: WATCHLIST_PERSISTENT=false.
+    WATCHLIST_PERSISTENT = os.getenv("WATCHLIST_PERSISTENT", "true").lower() == "true"
+    WATCHLIST_MAX = int(os.getenv("WATCHLIST_MAX", "60"))  # growth cap in persistent mode
     # Filters below are evidence-backed - see docs/RESEARCH.md
     MIN_DAILY_ATR_PCT = float(os.getenv("MIN_DAILY_ATR_PCT", "1.0"))
     MAX_DAILY_ATR_PCT = float(os.getenv("MAX_DAILY_ATR_PCT", "6.0"))
