@@ -47,6 +47,9 @@ class Position:
     initial_risk: float = 0.0     # avg_price - stop_loss at entry (R reference)
     mfe: float = 0.0              # max favorable excursion, in R multiples
     mae: float = 0.0              # max adverse excursion, in R multiples (<= 0)
+    # Landed cost of currently-held shares (gross + buy-side costs). Sell P&L
+    # subtracts this so each trade carries the full round-trip cost.
+    cost_basis_total: float = 0.0
 
 
 @dataclass
@@ -177,6 +180,9 @@ class PaperPortfolio:
                     trail_activation_pct=0.02,
                     trail_distance_pct=0.015,
                     initial_risk=entry_price * 0.02,
+                    # Historical buy costs aren't reconstructable per net
+                    # position here; price basis is the best approximation.
+                    cost_basis_total=entry_price * qty,
                 )
                 self.positions[symbol] = pos
         
@@ -237,6 +243,7 @@ class PaperPortfolio:
             if take_profit:
                 existing.take_profit = take_profit
             existing.initial_risk = existing.avg_price - existing.stop_loss
+            existing.cost_basis_total += net_value
         else:
             sl = stop_loss if stop_loss else executed_price * 0.98
             tp = take_profit if take_profit else executed_price * 1.02
@@ -250,6 +257,7 @@ class PaperPortfolio:
                 trail_activation_pct=0.02,
                 trail_distance_pct=0.015,
                 initial_risk=executed_price - sl,
+                cost_basis_total=net_value,
             )
 
         # Record transaction
@@ -320,11 +328,14 @@ class PaperPortfolio:
         slippage_cost = (price - executed_price) * qty
         net_value = gross_value - brokerage - stt - other_costs
 
-        # Calculate P&L
+        # P&L: allocate the position's landed cost (buy-side costs included)
+        # to the shares being sold, so net P&L carries the full round trip.
+        # Without this, sell-only costs made every trade look ~0.04% better.
         cost_basis = position.avg_price * qty
+        basis_alloc = position.cost_basis_total * (qty / position.qty)
         gross_pnl = gross_value - cost_basis
-        net_pnl = net_value - cost_basis
-        pnl_pct = (net_pnl / cost_basis) * 100
+        net_pnl = net_value - basis_alloc
+        pnl_pct = (net_pnl / basis_alloc) * 100 if basis_alloc else 0.0
 
         # Update cash
         self.cash += net_value
@@ -335,6 +346,7 @@ class PaperPortfolio:
         
         # Update position
         position.qty -= qty
+        position.cost_basis_total -= basis_alloc
         if position.qty == 0:
             del self.positions[symbol]
         
