@@ -46,7 +46,36 @@ _POOLED_SESSION.mount("http://", _POOLED_ADAPTER)
 
 def _pooled_request(method, url, **kwargs):
     """Same signature as requests.api.request, but on a pooled session."""
+    _pace()
     return _POOLED_SESSION.request(method, url, **kwargs)
+
+
+# Groww rejects request bursts ("Rate limit has breached"). Pooled connections
+# made calls ~5x faster, so a 744-symbol selection scan can fire ~20/s and
+# trip the limiter. Pace every SDK call through a shared token bucket:
+# sustained _RATE_CALLS_PER_SEC, with a small instantaneous burst allowance.
+_RATE_CALLS_PER_SEC = 8.0
+_RATE_BURST = 5.0
+_rate_lock = threading.Lock()
+_rate_tokens = _RATE_BURST
+_rate_last = time.monotonic()
+
+
+def _pace():
+    """Block until the shared token bucket allows one more API call."""
+    global _rate_tokens, _rate_last
+    with _rate_lock:
+        now = time.monotonic()
+        _rate_tokens = min(
+            _RATE_BURST, _rate_tokens + (now - _rate_last) * _RATE_CALLS_PER_SEC
+        )
+        _rate_last = now
+        if _rate_tokens >= 1.0:
+            _rate_tokens -= 1.0
+            return
+        time.sleep((1.0 - _rate_tokens) / _RATE_CALLS_PER_SEC)
+        _rate_tokens = 0.0
+        _rate_last = time.monotonic()
 
 
 if _requests_api.request is not _pooled_request:  # idempotent

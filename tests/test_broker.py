@@ -123,6 +123,22 @@ def test_requests_routed_through_pooled_session():
         server.server_close()
 
 
+def test_rate_pacing_smooths_bursts(monkeypatch):
+    """Selector scans 744 symbols; without pacing, pooled calls burst past
+    Groww's per-second limit ("Rate limit has breached", seen live)."""
+    import time as _time
+    import groww_broker as gb
+
+    monkeypatch.setattr(gb, "_RATE_CALLS_PER_SEC", 50.0)
+    monkeypatch.setattr(gb, "_RATE_BURST", 2.0)
+    monkeypatch.setattr(gb, "_rate_tokens", 2.0)
+    monkeypatch.setattr(gb, "_rate_last", _time.monotonic())
+    t0 = _time.monotonic()
+    for _ in range(6):  # 2 free + 4 paced at 50/s = ~0.08s
+        gb._pace()
+    assert _time.monotonic() - t0 >= 0.05
+
+
 def test_get_ltp_chunks_over_50():
     b = GrowwBroker()
     fake = _FakeClient()
