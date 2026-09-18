@@ -93,6 +93,81 @@ def test_render_dashboard_smoke(tmp_path, monkeypatch):
     assert "Signals 2 (1 approved / 1 rejected)" in out
 
 
+def _fake_tui_data():
+    return {
+        "api": True,
+        "status": {"database_connected": True},
+        "portfolio": {"start_capital": 100_000, "current_value": 100_050,
+                      "cash": 90_000, "position_value": 10_050},
+        "positions": {"live_prices": True, "positions": [
+            {"symbol": "X", "qty": 10, "entry_price": 100.0,
+             "current_price": 100.5, "r_multiple": 0.5}]},
+        "today": {"signals_total": 2, "signals_approved": 1,
+                  "signals_rejected": 1, "trades_total": 1, "trades_buy": 1,
+                  "trades_sell": 0, "total_pnl": -12.5,
+                  "signals": [
+                      {"timestamp": "2026-09-18T09:30:00", "symbol": "X",
+                       "approved": True, "adjusted_qty": 10},
+                      {"timestamp": "2026-09-18T09:31:00", "symbol": "Y",
+                       "approved": False,
+                       "rejection_reason": "Volatility too low"}],
+                  "trades": [
+                      {"timestamp": "2026-09-18T09:32:00", "symbol": "X",
+                       "side": "BUY", "qty": 10, "price": 100.0,
+                       "exit_reason": "SIGNAL_ENTRY"}]},
+        "trades": {"trades": []},
+        "logs": ["[2026-09-18 09:30:00] [INFO] [live_trader] ON-BAR: x"],
+    }
+
+
+def test_tui_renderables():
+    import pytest
+    pytest.importorskip("textual")
+    from io import StringIO
+    from rich.console import Console
+    import monitor_tui as tui
+
+    data = _fake_tui_data()
+    console = Console(file=StringIO(), width=160, no_color=True)
+    for renderable in (tui.system_text(data, data["logs"]),
+                       tui.portfolio_text(data),
+                       tui.positions_table(data),
+                       tui.signals_table(data),
+                       tui.trades_table(data),
+                       tui.log_text(data, 5)):
+        console.print(renderable)
+    out = console.file.getvalue()
+    assert "X" in out and "QTY" in out and "SIGNAL_ENTRY" in out
+    assert "rejected" in out and "Volatility too low" in out
+    assert "Realized" in out
+
+
+def test_tui_app_lifecycle(monkeypatch):
+    import pytest
+    pytest.importorskip("textual")
+    import asyncio
+
+    import monitor
+    import monitor_tui as tui
+
+    monkeypatch.setattr(monitor, "_trade_logs", lambda: [])
+    data = _fake_tui_data()
+    app = tui.MonitorApp(interval=60, collect_fn=lambda: data)
+
+    async def run():
+        async with app.run_test(size=(140, 36)) as pilot:
+            await pilot.pause()
+            assert app._data is data  # collect ran on mount
+            assert "market" in app.sub_title
+            await pilot.press("p")
+            assert app._paused is True
+            await pilot.press("r")
+            assert app._paused is False
+            await pilot.press("q")
+
+    asyncio.run(run())
+
+
 def test_tail_file_last_n(tmp_path, capsys):
     f = tmp_path / "t.log"
     f.write_text("\n".join(f"L{i}" for i in range(8)) + "\n")

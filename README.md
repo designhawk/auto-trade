@@ -64,6 +64,7 @@ That's it — the bot starts its website (for the dashboard) and the trader. In 
 |---|---|
 | `python run.py` | Start everything (website + trader). Press `Ctrl+C` to stop. |
 | `python monitor.py` | Live terminal dashboard — portfolio, positions with R-multiples, today's signals/trades, feed & tick health, color-coded logs. |
+| `python monitor_tui.py` | Full-screen TUI version (Textual) — panels, colors, scrolling logs; keys `q` quit / `p` pause / `r` refresh. |
 | `python logs.py trader -f` | Watch the trader's diary in real time. |
 | `python report.py` | Yesterday's/today's report card (profit, win rate, costs, lessons). |
 | `python -m pytest tests/ -q` | Self-check: 41 automated tests proving the parts work. |

@@ -14,6 +14,10 @@ pyotp>=2.9.0
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 
+# TUI monitor (monitor_tui.py)
+textual>=0.70.0
+rich>=13.0.0
+
 # Time and environment
 pytz>=2023.3
 python-dotenv>=1.0.0
