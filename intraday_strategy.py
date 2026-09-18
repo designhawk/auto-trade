@@ -43,6 +43,8 @@ class IntradayMomentumStrategy(BaseStrategy):
         stop_atr_mult: float = 1.5,  # stop distance in ATRs (widen on 1m)
         recent_low_bars: int = 5,  # recent-low window for the stop floor
         min_stop_pct: float = 0.0,  # minimum stop distance (0 = no floor)
+        rsi_min: float = 30.0,  # RSI gate bounds (momentum must not be
+        rsi_max: float = 75.0,  # exhausted; raise max to chase stronger moves)
     ):
         self.lookback = lookback
         self.volume_multiplier = volume_multiplier
@@ -55,6 +57,8 @@ class IntradayMomentumStrategy(BaseStrategy):
         self.stop_atr_mult = stop_atr_mult
         self.recent_low_bars = recent_low_bars
         self.min_stop_pct = min_stop_pct
+        self.rsi_min = rsi_min
+        self.rsi_max = rsi_max
         self.last_signal_bar = {}
 
     @property
@@ -189,8 +193,9 @@ class IntradayMomentumStrategy(BaseStrategy):
         # Condition 3: Trend confirmation (price above 50 EMA - uptrend)
         in_uptrend = current_price > ema50
 
-        # Condition 4: RSI not overbought (between 30-70, prefer 40-60)
-        rsi_ok = 30 < rsi < 75
+        # Condition 4: RSI bounds (configurable; raise rsi_max to allow
+        # stronger momentum entries, at the cost of more late-stage ones)
+        rsi_ok = self.rsi_min < rsi < self.rsi_max
 
         # Condition 5: Positive momentum (close > previous close)
         momentum = current_price > prev_close

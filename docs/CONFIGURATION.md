@@ -29,6 +29,7 @@ All settings live in one file: **`.env`** (your private copy; `.env.example` sho
 | `TRADE_INTERVAL` | 5m | Bar size for signals: `1m 2m 3m 5m 10m 15m 30m 1h`. 1m trades more often (more costs, more noise) — all "bars" below scale with it. |
 | `STOP_ATR_MULT` / `RECENT_LOW_BARS` | 1.5 / 5 | Stop construction. Widen both on faster bars (1m starting point: 2.5 / 15), otherwise 1-minute noise shakes you out. |
 | `MIN_STOP_PCT` | 0.0075 | Minimum stop distance (noise floor). Since targets = 2× risk, a 0.75% floor guarantees targets ≥1.5% — fast bars otherwise produce sub-1% targets that costs eat whole. |
+| `RSI_MIN` / `RSI_MAX` | 30 / 75 | RSI entry gate. `RSI_MAX=75` refuses exhausted moves (kept many strong names out: SANSERA 77–81, ACMESOLAR 78–88); raise to 85 in paper mode to collect data on those. |
 | `MIN_VOLATILITY_PCT` / `MAX_VOLATILITY_PCT` | auto | The ATR% gate. Auto-scales from the 5m baseline (0.3–4.0%) by √interval: ~0.13–1.79% on 1m. Set explicitly to override. |
 
 ## "How big are my bets?" (the important table)

@@ -80,6 +80,11 @@ class Config:
     STOP_ATR_MULT = float(os.getenv("STOP_ATR_MULT", "1.5"))
     RECENT_LOW_BARS = int(os.getenv("RECENT_LOW_BARS", "5"))
     MIN_STOP_PCT = float(os.getenv("MIN_STOP_PCT", "0.0075"))  # noise floor
+    # RSI entry-gate bounds. 75 refuses late-stage/exhausted moves (SANSERA
+    # 77-81, ACMESOLAR 78-88 were blocked); raise to 85 in paper mode to
+    # collect data on those - the reports will show if they're worth it.
+    RSI_MIN = float(os.getenv("RSI_MIN", "30"))
+    RSI_MAX = float(os.getenv("RSI_MAX", "75"))
 
     # Volatility gate bounds (ATR%%), interval-scaled from the 5m baseline
     _VOL_MIN, _VOL_MAX = _volatility_bounds(TRADE_INTERVAL_SECONDS)

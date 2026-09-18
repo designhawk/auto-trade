@@ -320,6 +320,35 @@ def test_wider_stop_params_lower_the_stop(tmpdb):
     assert s2[0].stop_loss < s1[0].stop_loss
 
 
+def test_rsi_bounds_configurable(tmpdb):
+    """rsi_max refuses overbought entries by default; raising it (paper mode)
+    allows strong-momentum breakouts through."""
+    n = 81
+    closes, p = [], 100.0
+    for i in range(n):
+        p += -0.25 if i % 5 == 4 else 0.6
+        closes.append(p)
+    volume = [100_000] * n
+    volume[-5:] = [500_000] * 5
+    df = pd.DataFrame({
+        "open": [c - 0.05 for c in closes],
+        "high": [c + 0.3 for c in closes],
+        "low": [c - 0.3 for c in closes],
+        "close": closes, "volume": volume}, index=_idx(n))
+
+    delta = df["close"].diff()
+    gain = delta.where(delta > 0, 0).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    rsi = (100 - 100 / (1 + gain / loss)).iloc[-1]
+    assert 75 < rsi < 99.9, rsi  # the tape is genuinely overbought
+
+    default = IntradayMomentumStrategy(volume_multiplier=0.5, cooldown_bars=0)
+    widened = IntradayMomentumStrategy(volume_multiplier=0.5, cooldown_bars=0,
+                                       rsi_max=99.5)
+    assert not default.generate_signals("X", df, _up_15m())
+    assert widened.generate_signals("X", df, _up_15m())
+
+
 def test_portfolio_value_empty_is_cash(tmpdb):
     t = _trader({})
     assert t.get_portfolio_value() == t.paper_portfolio.cash == 1_000_000

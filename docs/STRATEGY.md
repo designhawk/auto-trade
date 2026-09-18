@@ -17,8 +17,8 @@ Imagine a stock trading around ₹500 at 11 AM:
 3. **Uptrend — "Is the bigger picture pointing up?"**
    The price must be above its own smoothed 20-period average (EMA). This filters out "dead-cat bounces" — tiny jumps inside a falling stock.
 
-4. **RSI — "Is it energetic but not overheated?" (30–75)**
-   RSI is a 0–100 energy meter. Below 30 = lifeless (skip). Above 75 = overheated and likely to snap back (skip). The bot likes the 30–75 middle zone: moving, not manic.
+4. **RSI — "Is it energetic but not overheated?" (30–75 by default)**
+   RSI is a 0–100 energy meter. Below 30 = lifeless (skip). Above 75 = overheated and likely to snap back (skip). The bot likes the 30–75 middle zone: moving, not manic. Both bounds are configurable (`RSI_MIN`/`RSI_MAX`) — raising the ceiling to 85 lets stronger momentum entries through, at the cost of more late-stage ones that fade.
 
 5. **Momentum — "Is this minute still going up?"**
    The latest price must be higher than the previous bar's close. No buying into a stall.

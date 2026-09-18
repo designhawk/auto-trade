@@ -926,6 +926,8 @@ def main():
         stop_atr_mult=config.STOP_ATR_MULT,
         recent_low_bars=config.RECENT_LOW_BARS,
         min_stop_pct=config.MIN_STOP_PCT,
+        rsi_min=config.RSI_MIN,
+        rsi_max=config.RSI_MAX,
     )
 
     # Create trader
