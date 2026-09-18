@@ -804,6 +804,20 @@ class LiveTrader:
             )
             log.info(f"  Remaining Positions: {len(positions)}")
 
+            # Write the day's Markdown report (reports/ is gitignored, local only)
+            try:
+                from paths import REPORT_DIR
+                from report import build_report
+
+                REPORT_DIR.mkdir(exist_ok=True)
+                report_path = REPORT_DIR / f"{date.today().isoformat()}.md"
+                report_path.write_text(
+                    build_report(date.today().isoformat()), encoding="utf-8"
+                )
+                log.info(f"Daily report saved: {report_path}")
+            except Exception as e:
+                log.error(f"Report write failed: {e}")
+
         except Exception as e:
             log.error(f"Error saving session summary: {e}")
 

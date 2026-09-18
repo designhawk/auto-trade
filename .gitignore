@@ -29,3 +29,4 @@ node_modules/
 frontend/dist/
 .vscode/
 .idea/
+reports/

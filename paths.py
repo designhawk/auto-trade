@@ -13,4 +13,5 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 DB_PATH = PROJECT_ROOT / "trading.db"
 LOG_DIR = PROJECT_ROOT / "logs"
 BACKUP_DIR = PROJECT_ROOT / "backups"
+REPORT_DIR = PROJECT_ROOT / "reports"  # daily md reports (gitignored, local only)
 INSTRUMENTS_CACHE = PROJECT_ROOT / "instruments.csv"  # gitignored token map

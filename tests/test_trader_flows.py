@@ -265,6 +265,27 @@ def test_end_session_upserts(tmpdb, monkeypatch):
     assert sessions[0]["end_capital"] > 0
 
 
+def test_end_session_writes_daily_report(tmpdb, monkeypatch, tmp_path):
+    import paths
+
+    monkeypatch.setattr(paths, "REPORT_DIR", tmp_path / "reports")
+    monkeypatch.setattr(LiveTrader, "_ist_now",
+                        staticmethod(lambda: datetime(2026, 1, 1, 10, 0)))
+    now = datetime.now().isoformat()
+    db.insert_trade({"timestamp": now, "symbol": "X", "side": "BUY", "qty": 10,
+                     "price": 100.0, "value": 1000.0})
+    db.insert_trade({"timestamp": now, "symbol": "X", "side": "SELL", "qty": 10,
+                     "price": 102.0, "value": 1020.0, "pnl": 15.0,
+                     "exit_reason": "TAKE_PROFIT"})
+    t = _trader({"X": _flat_5m(102.0)})
+    t.end_session()
+    report = tmp_path / "reports" / f"{datetime.now().date().isoformat()}.md"
+    assert report.exists()
+    text = report.read_text(encoding="utf-8")
+    assert "# Trading report" in text
+    assert "Trades: 1 buys / 1 sells" in text and "TAKE_PROFIT" in text
+
+
 def test_entry_fetch_covers_lookback(tmpdb, monkeypatch):
     """Longer lookbacks (e.g. 60 bars on 1m) must still be fetched in full."""
     monkeypatch.setattr(LiveTrader, "_ist_now",
