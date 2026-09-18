@@ -19,6 +19,23 @@ from typing import Optional
 from base_strategy import BaseStrategy, Signal
 
 
+def _rounded_levels(entry: float, stop: float, min_rr: float) -> tuple:
+    """Round entry/SL/TP to 2dp and guarantee the rounded set meets min_rr.
+
+    The risk manager checks the rounded numbers, but TP is rounded from the
+    unrounded levels here, so the trio can read e.g. 1.998 (displays as 2.00)
+    and get rejected - seen live 2026-09-18 (STAR, and the morning's NEOGEN/
+    ALKEM/SHILPAMED float cases).
+    """
+    entry_r = round(entry, 2)
+    stop_r = round(stop, 2)
+    risk_r = entry_r - stop_r
+    tp_r = round(entry_r + risk_r * min_rr, 2)
+    if risk_r > 0 and (tp_r - entry_r) < risk_r * min_rr:
+        tp_r = round(entry_r + risk_r * min_rr + 0.005, 2)
+    return entry_r, stop_r, tp_r
+
+
 class IntradayMomentumStrategy(BaseStrategy):
     """
     5-minute momentum strategy for intraday trading.
@@ -241,14 +258,18 @@ class IntradayMomentumStrategy(BaseStrategy):
             confidence += min(trend_strength / 5, 0.2)  # Up to 0.2 for trend strength
             confidence = min(confidence, 1.0)
 
+            entry_r, stop_r, tp_r = _rounded_levels(
+                current_price, stop_loss, self.min_risk_reward
+            )
+
             # Create signal
             signal = Signal(
                 symbol=symbol,
                 action="BUY",
                 confidence=round(confidence, 2),
-                entry_price=round(current_price, 2),
-                stop_loss=round(stop_loss, 2),
-                take_profit=round(take_profit, 2),
+                entry_price=entry_r,
+                stop_loss=stop_r,
+                take_profit=tp_r,
                 reason=(
                     f"Breakout above {self.lookback}-period high (₹{rolling_high:.2f}) "
                     f"with {volume_ratio:.1f}x volume. "
