@@ -368,7 +368,7 @@ class LiveTrader:
                 trail_dist = pos.trail_distance_pct * (
                     config.TRAIL_TIGHTEN_MULT if late_day else 1.0)
 
-                # Staged EOD wind-down: half of qty per tick from 15:00, all at 15:20
+                # Staged EOD wind-down: half of qty per tick from 15:00, all at FULL_EXIT (15:10)
                 eod_frac = self._eod_exit_frac(now_ist)
                 if eod_frac > 0 and pos.qty > 0:
                     sell_qty = (pos.qty if eod_frac >= 1.0

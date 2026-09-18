@@ -27,7 +27,7 @@ python logs.py trader -f     # the trader's live diary, line by line
 | ~9:00 | Photocopies yesterday's diary (backup), picks 30 stocks, subscribes to their live price feed | Start `run.py`, get chai |
 | 9:15–14:30 | Checks all 30 stocks every bar (5 min default; 1 min with `TRADE_INTERVAL=1m`); buys breakouts, manages open trades. New entries stop after 6/day | Nothing. Seriously — don't touch it. Watching every tick teaches anxiety, not skill. |
 | 9:30, 11:00 | Quietly swaps dull stocks for livelier ones | Nothing |
-| 14:30–15:20 | Tightens safety nets, stops new entries (14:45), sells down gradually | Start paying attention — this is when the day's result locks in |
+| 14:30–15:10 | Tightens safety nets, stops new entries (14:45), sells down gradually | Start paying attention — this is when the day's result locks in |
 | 15:25 | Emergency sell-all if anything remains | Nothing left to do |
 | Evening | Writes report card | **This is your real job:** `python report.py` + 10 minutes of review |
 

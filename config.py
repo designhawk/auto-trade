@@ -157,7 +157,7 @@ class Config:
     SCALE_START_HOUR = 15
     SCALE_START_MINUTE = 0  # staged profit-taking begins
     FULL_EXIT_HOUR = 15
-    FULL_EXIT_MINUTE = 20  # square off (force-close at MARKET_END is backstop)
+    FULL_EXIT_MINUTE = 10  # before Groww's 15:20 auto-square-off (Rs.50+GST/position)
     TIGHTEN_HOUR = 14
     TIGHTEN_MINUTE = 30  # tighten trails / force-scale >= SCALE_1430_R
     RESELECT_TIMES = _parse_hhmm_list(os.getenv("RESELECT_TIMES", "09:30,11:00"))

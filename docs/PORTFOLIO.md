@@ -23,7 +23,7 @@ Real profit: **~₹173**, not the ₹200 the share prices suggest. Now imagine 2
 - **Half-profit at +1R ("SCALED_1R"):** when profit reaches 1× the original risk, the bot sells **half** and moves the stop-loss to your buying price (**breakeven**). Now the remaining half *cannot lose money*. This single habit smooths results enormously.
 - **Trailing stop:** as profit grows past +2%, the safety net ratchets *up* behind the price — locking in gains if the stock turns. After 14:30 it tightens (less time left = less patience).
 - **Scratch:** if a trade sits around doing nothing for ~1 hour (12 bars) without reaching even half its risk in profit, the bot sells and moves on. Dead money is usually wrong money.
-- **End-of-day wind-down:** from 15:00 the bot sells down gradually; 15:20 everything goes; 15:25 is the emergency backup. You never wake up owning something overnight.
+- **End-of-day wind-down:** from 15:00 the bot sells down gradually; 15:10 everything goes; 15:25 is the emergency backup (Groww charges Rs.50+GST per position still open at 15:20). You never wake up owning something overnight.
 
 ## MFE and MAE — the two most educational numbers
 

@@ -40,7 +40,7 @@ All of this is recorded in a small database file on your computer, and you can w
 | 9:30, 11:00 | Re-checks the list, swaps out dull stocks | The bot adapts to how the morning actually played out |
 | 14:30 | Tightens safety nets on open trades | Late-day caution: less time left to recover |
 | 14:45 | Stops opening new trades | No last-minute gambles |
-| 15:00–15:20 | Gradually sells everything | Goes home flat, no overnight risk |
+| 15:00–15:10 | Gradually sells everything | Goes home flat, no overnight risk |
 | 15:25 | Emergency sell-all (backup) | Guarantees nothing is held overnight |
 | After close | Writes your report card | Read it with `python report.py` |
 
