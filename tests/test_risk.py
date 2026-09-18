@@ -62,6 +62,20 @@ def test_custom_volatility_bounds():
     assert ok.approved
 
 
+def test_exact_ratio_float_noise_passes():
+    """TP is built as entry + 2R; float division can read 1.99999999999997
+    and silently reject an exact 2.0 (seen live: NEOGEN/ALKEM/SHILPAMED)."""
+    rm = _rm()
+    exact = _sig(entry_price=250.55, stop_loss=248.67, take_profit=254.31)
+    d = rm.approve(exact, [], available_cash=1_000_000)
+    assert d.approved, d.reason
+
+    # a genuine shortfall must still be rejected
+    short = _sig(entry_price=250.55, stop_loss=248.67, take_profit=253.50)
+    d2 = rm.approve(short, [], available_cash=1_000_000)
+    assert not d2.approved and "Risk-reward" in d2.reason
+
+
 def test_confidence_scales_qty():
     rm = _rm()
     hi = rm.approve(_sig(confidence=1.0), [], available_cash=1_000_000)

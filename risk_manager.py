@@ -179,7 +179,11 @@ class RiskManager:
             )
 
         risk_reward = reward / risk
-        if risk_reward < self.min_risk_reward:
+        # The strategy builds TP = entry + min_RR x risk, so an "exact" 2.0
+        # can read as 1.99999999999997 through float division and get
+        # rejected (seen live 2026-09-18: NEOGEN, ALKEM, SHILPAMED). Tolerate
+        # only representation noise, not a genuine shortfall.
+        if risk_reward < self.min_risk_reward - 1e-9:
             return RiskDecision(
                 approved=False,
                 adjusted_qty=0,
