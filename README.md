@@ -87,6 +87,7 @@ Full detail in [`docs/RISK_MANAGEMENT.md`](docs/RISK_MANAGEMENT.md). The 10-seco
 Written for learners, start anywhere:
 
 - [`docs/RESEARCH.md`](docs/RESEARCH.md) — what the evidence (papers, Indian backtests, SEBI) says and how it shaped the bot
+- [`docs/INDIAN_PRACTICE.md`](docs/INDIAN_PRACTICE.md) — how Indian intraday traders actually trade (setups, the clock, risk habits) vs this bot
 - [`docs/STRATEGY.md`](docs/STRATEGY.md) — what makes the bot buy, in plain words
 - [`docs/STOCK_SELECTION.md`](docs/STOCK_SELECTION.md) — how it picks the morning list
 - [`docs/RISK_MANAGEMENT.md`](docs/RISK_MANAGEMENT.md) — the 10 safety rules with rupee examples

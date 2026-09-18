@@ -32,7 +32,8 @@ from intraday_strategy import IntradayMomentumStrategy
 from risk_manager import RiskManager, RiskDecision
 from paper_portfolio import PaperPortfolio
 from stock_selector import StockSelector
-from db import init_db, insert_signal, insert_trade, insert_session, backup_db
+from db import (init_db, insert_signal, insert_trade, insert_session,
+                backup_db, get_trades_for_date)
 from logger import get_logger
 
 log = get_logger("live_trader")
@@ -414,14 +415,29 @@ class LiveTrader:
                 log.error(f"Error checking position {symbol}: {e}")
 
         # Second: Check for new entry signals (bounded entry window:
-        # skip the noisy first 15 min, stop before the late-day phase)
+        # skip the noisy open, pause the midday lull, stop before late day)
         hm = (now_ist.hour, now_ist.minute)
+        in_lunch_pause = (
+            (0, 0) < config.ENTRY_PAUSE_START <= hm < config.ENTRY_PAUSE_END
+        )
+        capped = False
+        if config.MAX_TRADES_PER_DAY > 0:
+            buys_today = sum(
+                1 for t in get_trades_for_date(now_ist.date().isoformat())
+                if t.get("side") == "BUY"
+            )
+            capped = buys_today >= config.MAX_TRADES_PER_DAY
         entries_open = (
             (config.ENTRY_START_HOUR, config.ENTRY_START_MINUTE) <= hm
             < (config.ENTRY_CUTOFF_HOUR, config.ENTRY_CUTOFF_MINUTE)
+            and not in_lunch_pause
+            and not capped
         )
         if not entries_open:
-            log.info("Outside entry window - no new entries this bar")
+            why = ("lunch-lull pause" if in_lunch_pause
+                   else "daily trade cap reached" if capped
+                   else "outside entry window")
+            log.info(f"No new entries this bar ({why})")
         for symbol in self.watchlist:
             try:
                 if not entries_open:

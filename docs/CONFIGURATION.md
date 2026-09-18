@@ -50,6 +50,8 @@ All settings live in one file: **`.env`** (your private copy; `.env.example` sho
 | `PARTIAL_R` / `PARTIAL_FRAC` | 1.0 / 0.5 | Sell half at 1× risk profit. Higher R = greedier, fewer partials banked. |
 | `SCRATCH_BARS` / `SCRATCH_R` | 12 / 0.5 | Give up after ~1 hour under half-risk profit. Higher bars = more patience for slow movers. |
 | `TRAIL_TIGHTEN_MULT` | 0.5 | After 14:30 the safety net follows twice as closely. |
+| Entry window: 9:30–14:45, with **11:45–13:30 pause** | fixed times | The open's first 15 min is false-breakout territory, 11:45–13:30 is the highest-loss window in Indian intraday studies (see `docs/INDIAN_PRACTICE.md`), and 14:45-onward leaves no time to recover. Positions keep being managed during the pause — only fresh entries stop. Set `ENTRY_PAUSE_START`/`ENTRY_PAUSE_END` to `00:00` to disable. |
+| `MAX_TRADES_PER_DAY` | 6 | Hard cap on new entries per day (0 = unlimited). SEBI data links high trading intensity to losses; practitioner guides say 2–3/day. |
 | Entry cutoff 14:45 → wind-down 15:00 → square-off 15:20 | fixed times | Hardcoded session rhythm (see Operations). Change in `config.py` only if you understand why. |
 
 ## "What does trading cost me?" (leave these unless verifying)

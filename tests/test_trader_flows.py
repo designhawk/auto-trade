@@ -99,6 +99,40 @@ def test_entry_cutoff_blocks(tmpdb, monkeypatch):
     assert db.get_signals_for_date(datetime.now().date().isoformat()) == []
 
 
+def test_lunch_pause_blocks_entries(tmpdb, monkeypatch):
+    """11:45-13:30 is the highest-loss window in Indian intraday studies."""
+    monkeypatch.setattr(LiveTrader, "_ist_now",
+                        staticmethod(lambda: datetime(2026, 1, 1, 12, 30)))
+    t = _trader({"E": {config.TRADE_INTERVAL: _breakout_5m(), "15m": _up_15m()}})
+    t.watchlist = ["E"]
+    t.on_bar()
+    assert not t.paper_portfolio.has_position("E")
+    assert db.get_signals_for_date(datetime.now().date().isoformat()) == []
+
+
+def test_trade_cap_blocks_entries(tmpdb, monkeypatch):
+    """Overtrading is the #1 documented retail killer; cap entries/day."""
+    monkeypatch.setattr(LiveTrader, "_ist_now",
+                        staticmethod(lambda: datetime(2026, 1, 1, 11, 0)))
+    # pinned clock date must match the fake trade's date for the cap to count
+    db.insert_trade({"timestamp": "2026-01-01T09:00:00", "symbol": "F0",
+                     "side": "BUY", "qty": 1, "price": 10.0, "value": 10.0})
+    frames = {"E": {config.TRADE_INTERVAL: _breakout_5m(), "15m": _up_15m()},
+              "F0": _flat_5m(10.0)}
+
+    monkeypatch.setattr(config, "MAX_TRADES_PER_DAY", 1)
+    t1 = _trader(frames)
+    t1.watchlist = ["E"]
+    t1.on_bar()
+    assert not t1.paper_portfolio.has_position("E")  # cap reached -> blocked
+
+    monkeypatch.setattr(config, "MAX_TRADES_PER_DAY", 2)
+    t2 = _trader(frames)
+    t2.watchlist = ["E"]
+    t2.on_bar()
+    assert t2.paper_portfolio.has_position("E")  # under cap -> allowed
+
+
 def test_entry_start_blocks_first_15min(tmpdb, monkeypatch):
     """Research: the first 15 minutes are false-breakout territory."""
     monkeypatch.setattr(LiveTrader, "_ist_now",

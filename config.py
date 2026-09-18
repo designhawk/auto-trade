@@ -25,6 +25,15 @@ def _parse_hhmm_list(raw: str) -> list:
     return out
 
 
+def _parse_hhmm(raw: str, default: tuple) -> tuple:
+    """Parse 'HH:MM' into (h, m); default on bad input."""
+    try:
+        h, m = str(raw).split(":")
+        return int(h), int(m)
+    except (ValueError, AttributeError):
+        return default
+
+
 def _volatility_bounds(interval_seconds: int) -> tuple:
     """
     ATR%% gate bounds (min, max) scaled ~sqrt(time) from the 5m baseline.
@@ -117,6 +126,13 @@ class Config:
     ENTRY_START_MINUTE = 30  # no fresh entries in the noisy first 15 min
     ENTRY_CUTOFF_HOUR = 14
     ENTRY_CUTOFF_MINUTE = 45  # no new entries after this
+    # Midday "lunch lull" entry pause: 11:45-13:30 has the highest loss rate
+    # of any window in Indian intraday studies (see docs/INDIAN_PRACTICE.md).
+    # Positions are still managed through it; only fresh entries pause.
+    # Set both to 00:00 to disable.
+    ENTRY_PAUSE_START = _parse_hhmm(os.getenv("ENTRY_PAUSE_START", "11:45"), (11, 45))
+    ENTRY_PAUSE_END = _parse_hhmm(os.getenv("ENTRY_PAUSE_END", "13:30"), (13, 30))
+    MAX_TRADES_PER_DAY = int(os.getenv("MAX_TRADES_PER_DAY", "6"))  # 0 = unlimited
     SCALE_START_HOUR = 15
     SCALE_START_MINUTE = 0  # staged profit-taking begins
     FULL_EXIT_HOUR = 15
