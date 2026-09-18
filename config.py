@@ -131,6 +131,7 @@ class Config:
     # Streaming feed (fail-open: REST fallback when inactive/stale)
     FEED_ENABLED = os.getenv("FEED_ENABLED", "true").lower() == "true"
     FEED_MAX_AGE_S = int(os.getenv("FEED_MAX_AGE_S", "60"))
+    FEED_TIMEOUT_S = int(os.getenv("FEED_TIMEOUT_S", "20"))  # socket setup budget
     INSTRUMENTS_TTL_DAYS = int(os.getenv("INSTRUMENTS_TTL_DAYS", "7"))
 
     # Database

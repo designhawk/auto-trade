@@ -17,6 +17,7 @@ Documentation: https://groww.in/trade-api/docs/python-sdk
 """
 
 import os
+import threading
 import time
 from typing import Optional
 from datetime import datetime, timedelta
@@ -128,6 +129,7 @@ class GrowwBroker(BrokerClient):
         self._client: Optional[GrowwAPI] = None
         self._feed: Optional[GrowwFeed] = None
         self._feed_mgr = None  # FeedManager, created by start_feed()
+        self._feed_thread: Optional[threading.Thread] = None
         self._use_api_key = use_api_key
         self._access_token: Optional[str] = None
         
@@ -217,8 +219,13 @@ class GrowwBroker(BrokerClient):
     def start_feed(self, symbols: list) -> bool:
         """
         Subscribe symbols to streaming LTP (sync-poll mode; consume() is
-        never called because it blocks). Fail-open: returns False on any
-        error and get_ltp() keeps serving REST.
+        never called because it blocks).
+
+        Fail-open by design: the SDK's socket connect can block or retry
+        indefinitely (observed in production), so setup runs in a daemon
+        thread with a timeout. If it doesn't finish in FEED_TIMEOUT_S, we
+        log and return False - the trading loop proceeds on REST, and a
+        late-arriving feed is picked up automatically by get_ltp().
         """
         try:
             from config import config
@@ -229,22 +236,41 @@ class GrowwBroker(BrokerClient):
                 return False
             if self._client is None or not symbols:
                 return False
-            # Lazy: connect the streaming socket only when we actually
-            # need it (see connect() note)
-            if self._feed is None:
-                self._feed = GrowwFeed(self._client)
-            tokens = ensure_tokens(
-                self._client, list(symbols), ttl_days=config.INSTRUMENTS_TTL_DAYS
-            )
-            if self._feed_mgr is None:
-                self._feed_mgr = FeedManager(self._feed)
-            ok = self._feed_mgr.resubscribe(list(symbols), tokens)
-            if ok:
-                missing = [s for s in symbols if s not in tokens]
-                if missing:
-                    print(f"[FEED] No tokens for {missing} - REST fallback for those")
-                print(f"[FEED] Streaming {len(self._feed_mgr._subscribed)} symbols")
-            return ok
+
+            # Don't stack attempts while one is still running
+            if self._feed_thread is not None and self._feed_thread.is_alive():
+                return False
+
+            result = {"ok": False}
+
+            def _setup():
+                try:
+                    if self._feed is None:
+                        self._feed = GrowwFeed(self._client)
+                    tokens = ensure_tokens(
+                        self._client, list(symbols),
+                        ttl_days=config.INSTRUMENTS_TTL_DAYS,
+                    )
+                    if self._feed_mgr is None:
+                        self._feed_mgr = FeedManager(self._feed)
+                    ok = self._feed_mgr.resubscribe(list(symbols), tokens)
+                    result["ok"] = ok
+                    if ok:
+                        missing = [s for s in symbols if s not in tokens]
+                        if missing:
+                            print(f"[FEED] No tokens for {missing} - REST for those")
+                        print(f"[FEED] Streaming "
+                              f"{len(self._feed_mgr._subscribed)} symbols")
+                except Exception as e:
+                    print(f"[FEED] setup failed, REST fallback: {e}")
+
+            self._feed_thread = threading.Thread(target=_setup, daemon=True)
+            self._feed_thread.start()
+            self._feed_thread.join(timeout=config.FEED_TIMEOUT_S)
+            if not result["ok"]:
+                print(f"[FEED] not ready within {config.FEED_TIMEOUT_S}s "
+                      f"- REST fallback (feed may attach later)")
+            return result["ok"]
         except Exception as e:
             print(f"[FEED] start failed, REST fallback: {e}")
             return False

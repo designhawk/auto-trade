@@ -42,6 +42,32 @@ def test_resubscribe_diffs():
         {"exchange": "NSE", "segment": "CASH", "exchange_token": "3"}]
 
 
+def test_start_feed_times_out_without_blocking(monkeypatch):
+    """A hanging SDK socket must never block trading (production hang,
+    2026-09-18): setup runs in a thread and gives up after FEED_TIMEOUT_S."""
+    import time
+
+    import groww_broker as gb
+    import config as config_mod
+
+    monkeypatch.setattr(config_mod.config, "FEED_TIMEOUT_S", 0.3)
+
+    class _HangFeed:
+        def __init__(self, *a, **k):
+            time.sleep(3)  # simulates the SDK's blocking NATS connect
+
+    monkeypatch.setattr(gb, "GrowwFeed", _HangFeed)
+    b = gb.GrowwBroker()
+    b._client = object()  # present, so we reach feed creation
+
+    t0 = time.time()
+    ok = b.start_feed(["X"])
+    elapsed = time.time() - t0
+
+    assert ok is False
+    assert elapsed < 1.5, f"start_feed blocked {elapsed:.1f}s"
+
+
 def test_resubscribe_failure_fail_open():
     class _Boom(_FakeFeed):
         def subscribe_ltp(self, insts):

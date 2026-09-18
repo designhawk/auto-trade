@@ -22,7 +22,7 @@ One technical footnote you'll appreciate later: the exchange identifies stocks b
 
 Groww allows ~300 data requests per minute. The bot's busiest moment uses ~70, mornings ~210 spread over minutes. Well within limits — it will never get your key banned. Price charts come with per-request history caps (e.g., 30 days of 5-minute bars), and the bot's requests sit comfortably inside them.
 
-One rule to remember: **run only ONE streaming process per Groww account.** The live-price wire opens a dedicated socket, and a second socket (e.g., a second copy of the bot, or a script that connects while the bot is running) can fail or hang inside the broker library. The bot opens the socket lazily — only the trader process uses it; the dashboard API and any diagnostic scripts talk REST instead.
+One rule to remember: **run only ONE streaming process per Groww account.** The live-price wire opens a dedicated socket, and a second socket (e.g., a second copy of the bot, or a script that connects while the bot is running) can fail or hang inside the broker library. The bot opens the socket lazily — only the trader process uses it; the dashboard API and any diagnostic scripts talk REST instead. Socket setup runs in a background thread with a timeout (`FEED_TIMEOUT_S`, default 20s): if Groww's feed is slow or broken, the trader starts anyway and keeps trading on REST prices, and a late-arriving feed is picked up automatically.
 
 ## Beginner takeaways
 
