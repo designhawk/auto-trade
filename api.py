@@ -421,8 +421,8 @@ def get_today_summary():
             "trades_buy": len(buy_trades),
             "trades_sell": len(sell_trades),
             "total_pnl": total_pnl,
-            "signals": signals[:10],  # Last 10 signals
-            "trades": trades[:10]     # Last 10 trades
+            "signals": signals[-10:],  # last 10 signals (list is ASC by time)
+            "trades": trades[-10:]     # last 10 trades (list is ASC by time)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

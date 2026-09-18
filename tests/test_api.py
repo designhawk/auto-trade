@@ -88,3 +88,27 @@ def test_sessions_and_today(tmpdb, monkeypatch):
     t = api.get_today_summary()
     assert t["signals_total"] == 2 and t["signals_approved"] == 1
     assert t["trades_total"] == 2 and t["total_pnl"] == 7.0
+
+
+def test_today_returns_latest_not_oldest(tmpdb, monkeypatch):
+    """Signals tab froze once the day passed 10 signals: /today sliced the
+    oldest 10 (ASC order) instead of the latest 10."""
+    monkeypatch.setattr(api, "get_broker", _boom)
+    monkeypatch.setattr(api, "_broker", None)
+    day = datetime.now()
+
+    def ts(i):
+        return day.replace(hour=9, minute=15, second=i, microsecond=0).isoformat()
+
+    for i in range(12):
+        db.insert_signal({"timestamp": ts(i), "symbol": f"S{i:02d}", "action": "BUY",
+                          "confidence": 0.8, "entry_price": 100.0, "stop_loss": 98.0,
+                          "take_profit": 104.0, "reason": "t", "approved": True,
+                          "adjusted_qty": 10, "strategy": "S"})
+        db.insert_trade({"timestamp": ts(i), "symbol": f"S{i:02d}", "side": "BUY",
+                         "qty": 1, "price": 100.0, "value": 100.0, "brokerage": 0.0,
+                         "stt": 0.0, "other_costs": 0.0, "slippage_cost": 0.0})
+    t = api.get_today_summary()
+    assert t["signals_total"] == 12 and t["trades_total"] == 12
+    assert [s["symbol"] for s in t["signals"]] == [f"S{i:02d}" for i in range(2, 12)]
+    assert [s["symbol"] for s in t["trades"]] == [f"S{i:02d}" for i in range(2, 12)]
