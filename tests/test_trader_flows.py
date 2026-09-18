@@ -99,8 +99,12 @@ def test_entry_cutoff_blocks(tmpdb, monkeypatch):
     assert db.get_signals_for_date(datetime.now().date().isoformat()) == []
 
 
-def test_lunch_pause_blocks_entries(tmpdb, monkeypatch):
-    """11:45-13:30 is the highest-loss window in Indian intraday studies."""
+def test_lunch_pause_blocks_entries_when_enabled(tmpdb, monkeypatch):
+    """11:45-13:30 is the highest-loss window in Indian intraday studies.
+    The pause ships disabled (paper data collection) - when enabled it
+    must block fresh entries."""
+    monkeypatch.setattr(config, "ENTRY_PAUSE_START", (11, 45))
+    monkeypatch.setattr(config, "ENTRY_PAUSE_END", (13, 30))
     monkeypatch.setattr(LiveTrader, "_ist_now",
                         staticmethod(lambda: datetime(2026, 1, 1, 12, 30)))
     t = _trader({"E": {config.TRADE_INTERVAL: _breakout_5m(), "15m": _up_15m()}})
@@ -108,6 +112,18 @@ def test_lunch_pause_blocks_entries(tmpdb, monkeypatch):
     t.on_bar()
     assert not t.paper_portfolio.has_position("E")
     assert db.get_signals_for_date(datetime.now().date().isoformat()) == []
+
+
+def test_lunch_entries_allowed_when_pause_disabled(tmpdb, monkeypatch):
+    """Default config: no midday pause (paper trading wants the data)."""
+    assert config.ENTRY_PAUSE_START == (0, 0)
+    assert config.ENTRY_PAUSE_END == (0, 0)
+    monkeypatch.setattr(LiveTrader, "_ist_now",
+                        staticmethod(lambda: datetime(2026, 1, 1, 12, 30)))
+    t = _trader({"E": {config.TRADE_INTERVAL: _breakout_5m(), "15m": _up_15m()}})
+    t.watchlist = ["E"]
+    t.on_bar()
+    assert t.paper_portfolio.has_position("E")
 
 
 def test_trade_cap_blocks_entries(tmpdb, monkeypatch):

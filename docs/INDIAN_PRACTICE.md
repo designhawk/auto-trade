@@ -42,7 +42,7 @@ Practitioner guides agree strongly on timing:
 | 13:30–14:30 | Market resumes direction | Afternoon trends |
 | ~15:15 | Hard exit | Before auto-square-off (brokers: 3:12–3:25 PM) and closing chaos |
 
-**Adopted:** our entries already exclude 9:15–9:30 (`ENTRY_START=9:30`) and stop at 14:45. We've now also added the **lunch-lull entry pause (11:45–13:30, `ENTRY_PAUSE_*`)** — positions are still *managed* through it (stops, targets, partials keep working); only fresh entries pause.
+**Adopted:** our entries already exclude 9:15–9:30 (`ENTRY_START=9:30`) and stop at 14:45. The lunch-lull pause is implemented (`ENTRY_PAUSE_START/END`) but **ships disabled** — paper trading exists to collect data, so we want the midday trades logged too. Enable `11:45`–`13:30` when trading real money, where the loss-rate evidence applies.
 
 ## 4. Risk conventions (what the survivors do)
 

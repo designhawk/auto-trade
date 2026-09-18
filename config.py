@@ -126,12 +126,12 @@ class Config:
     ENTRY_START_MINUTE = 30  # no fresh entries in the noisy first 15 min
     ENTRY_CUTOFF_HOUR = 14
     ENTRY_CUTOFF_MINUTE = 45  # no new entries after this
-    # Midday "lunch lull" entry pause: 11:45-13:30 has the highest loss rate
-    # of any window in Indian intraday studies (see docs/INDIAN_PRACTICE.md).
-    # Positions are still managed through it; only fresh entries pause.
-    # Set both to 00:00 to disable.
-    ENTRY_PAUSE_START = _parse_hhmm(os.getenv("ENTRY_PAUSE_START", "11:45"), (11, 45))
-    ENTRY_PAUSE_END = _parse_hhmm(os.getenv("ENTRY_PAUSE_END", "13:30"), (13, 30))
+    # Midday "lunch lull" entry pause (optional). Studies show 11:45-13:30
+    # has the highest loss rate of any window (docs/INDIAN_PRACTICE.md), but
+    # for paper trading we WANT the data - so it ships disabled. To enable:
+    # ENTRY_PAUSE_START=11:45, ENTRY_PAUSE_END=13:30.
+    ENTRY_PAUSE_START = _parse_hhmm(os.getenv("ENTRY_PAUSE_START", "00:00"), (0, 0))
+    ENTRY_PAUSE_END = _parse_hhmm(os.getenv("ENTRY_PAUSE_END", "00:00"), (0, 0))
     MAX_TRADES_PER_DAY = int(os.getenv("MAX_TRADES_PER_DAY", "6"))  # 0 = unlimited
 
     # India VIX regime filter (practitioner guidance: 12-18 is the breakout
