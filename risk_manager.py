@@ -49,6 +49,8 @@ class RiskManager:
         max_drawdown_pct: float = 0.10,  # 10% circuit breaker
         min_risk_reward: float = 2.0,
         min_cash_reserve: float = 100000,  # ₹1L minimum cash
+        min_volatility_pct: float = 0.3,  # ATR% floor (interval-scaled by config)
+        max_volatility_pct: float = 4.0,  # ATR% ceiling (interval-scaled by config)
         heat_cap_pct: float = 0.06,  # max total open risk (adverse excursion)
         target_vol_pct: float = 1.5,  # volatility-targeting anchor (ATR%)
         throttle_start_mult: float = 0.5,  # halve size past this x daily limit
@@ -76,6 +78,8 @@ class RiskManager:
         self.max_drawdown_pct = max_drawdown_pct
         self.min_risk_reward = min_risk_reward
         self.min_cash_reserve = min_cash_reserve
+        self.min_volatility_pct = min_volatility_pct
+        self.max_volatility_pct = max_volatility_pct
         self.heat_cap_pct = heat_cap_pct
         self.target_vol_pct = target_vol_pct
         self.throttle_start_mult = throttle_start_mult
@@ -184,17 +188,17 @@ class RiskManager:
 
         # Check 7: Volatility check (must have reasonable volatility for momentum)
         if signal.volatility_pct is not None:
-            if signal.volatility_pct > 4.0:
+            if signal.volatility_pct > self.max_volatility_pct:
                 return RiskDecision(
                     approved=False,
                     adjusted_qty=0,
-                    reason=f"Volatility too high: {signal.volatility_pct:.1f}% > 4%",
+                    reason=f"Volatility too high: {signal.volatility_pct:.2f}% > {self.max_volatility_pct}%",
                 )
-            if signal.volatility_pct < 0.3:
+            if signal.volatility_pct < self.min_volatility_pct:
                 return RiskDecision(
                     approved=False,
                     adjusted_qty=0,
-                    reason=f"Volatility too low: {signal.volatility_pct:.1f}% < 0.3%",
+                    reason=f"Volatility too low: {signal.volatility_pct:.2f}% < {self.min_volatility_pct}%",
                 )
 
         # Check 8: Portfolio heat cap (total open risk across positions)

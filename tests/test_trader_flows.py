@@ -146,6 +146,42 @@ def test_end_session_upserts(tmpdb, monkeypatch):
     assert sessions[0]["end_capital"] > 0
 
 
+def test_entry_fetch_covers_lookback(tmpdb, monkeypatch):
+    """Longer lookbacks (e.g. 60 bars on 1m) must still be fetched in full."""
+    monkeypatch.setattr(LiveTrader, "_ist_now",
+                        staticmethod(lambda: datetime(2026, 1, 1, 10, 0)))
+    strategy = IntradayMomentumStrategy(lookback=60, volume_multiplier=0.5,
+                                        cooldown_bars=0)
+    needed = strategy.required_bars()
+
+    class _B(_Broker):
+        def get_ohlcv(self, symbol, interval, bars):
+            if interval == config.TRADE_INTERVAL:
+                assert bars >= needed, f"fetched {bars}, strategy needs {needed}"
+            return super().get_ohlcv(symbol, interval, bars)
+
+    t = LiveTrader(strategy=strategy,
+                   broker=_B({"E": {config.TRADE_INTERVAL: _breakout_5m(),
+                                    "15m": _up_15m()}}),
+                   initial_capital=1_000_000)
+    t.watchlist = ["E"]
+    t.paper_portfolio.slippage_max_pct = 0
+    t.on_bar()  # the fetch assertion is the point; signal may not fire
+
+
+def test_wider_stop_params_lower_the_stop(tmpdb):
+    """stop_atr_mult + recent_low_bars widen (lower) the protective stop."""
+    narrow = IntradayMomentumStrategy(volume_multiplier=0.5, cooldown_bars=0)
+    wide = IntradayMomentumStrategy(volume_multiplier=0.5, cooldown_bars=0,
+                                    stop_atr_mult=2.5, recent_low_bars=15,
+                                    max_stop_loss_pct=0.05)  # cap relaxed: this
+    # synthetic tape has 5m-scale volatility, so the default 2.5% cap would bind
+    s1 = narrow.generate_signals("X", _breakout_5m(), _up_15m())
+    s2 = wide.generate_signals("X", _breakout_5m(), _up_15m())
+    assert s1 and s2, "both variants must produce a signal"
+    assert s2[0].stop_loss < s1[0].stop_loss
+
+
 def test_portfolio_value_empty_is_cash(tmpdb):
     t = _trader({})
     assert t.get_portfolio_value() == t.paper_portfolio.cash == 1_000_000

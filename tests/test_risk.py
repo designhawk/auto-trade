@@ -52,6 +52,16 @@ def test_soft_throttle_halves():
     assert "throttled" in half.reason
 
 
+def test_custom_volatility_bounds():
+    rm = _rm(min_volatility_pct=0.2, max_volatility_pct=1.0)
+    low = rm.approve(_sig(volatility_pct=0.1), [], available_cash=1_000_000)
+    assert not low.approved and "too low" in low.reason.lower()
+    high = rm.approve(_sig(volatility_pct=1.5), [], available_cash=1_000_000)
+    assert not high.approved and "too high" in high.reason.lower()
+    ok = rm.approve(_sig(volatility_pct=0.5), [], available_cash=1_000_000)
+    assert ok.approved
+
+
 def test_confidence_scales_qty():
     rm = _rm()
     hi = rm.approve(_sig(confidence=1.0), [], available_cash=1_000_000)

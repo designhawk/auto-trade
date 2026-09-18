@@ -80,6 +80,8 @@ class LiveTrader:
             max_drawdown_pct=config.MAX_DRAWDOWN_PCT,
             min_risk_reward=config.MIN_RISK_REWARD,
             min_cash_reserve=config.MIN_CASH_RESERVE,
+            min_volatility_pct=config.MIN_VOLATILITY_PCT,
+            max_volatility_pct=config.MAX_VOLATILITY_PCT,
             heat_cap_pct=config.HEAT_CAP_PCT,
             target_vol_pct=config.TARGET_VOL_PCT,
             throttle_start_mult=config.THROTTLE_START_MULT,
@@ -424,8 +426,10 @@ class LiveTrader:
                 if self.paper_portfolio.has_position(symbol):
                     continue
 
-                # Fetch OHLCV data (5m for signals, 15m for trend filter)
-                df = self.broker.get_ohlcv(symbol, config.TRADE_INTERVAL, 50)
+                # Fetch OHLCV data (signals on TRADE_INTERVAL, 15m trend filter).
+                # Bars must cover the strategy's lookback + warmup headroom.
+                need_bars = max(50, self.strategy.required_bars() + 10)
+                df = self.broker.get_ohlcv(symbol, config.TRADE_INTERVAL, need_bars)
 
                 if len(df) < self.strategy.required_bars():
                     continue
@@ -841,6 +845,8 @@ def main():
         cooldown_bars=config.COOLDOWN_BARS,
         trend_ema=config.TREND_EMA,
         vwap_required=config.VWAP_REQUIRED,
+        stop_atr_mult=config.STOP_ATR_MULT,
+        recent_low_bars=config.RECENT_LOW_BARS,
     )
 
     # Create trader

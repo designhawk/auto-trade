@@ -22,6 +22,8 @@ All settings live in one file: **`.env`** (your private copy; `.env.example` sho
 | `TREND_EMA` / `VWAP_REQUIRED` | 20 / true | The two confirmation filters. Turning VWAP off lets the bot buy weak stocks below the day's fair price — not recommended until you know why. |
 | `COOLDOWN_BARS` | 15 | Breather after trading a stock, in bars (~75 min on 5m, ~15 min on 1m). Lower = possible over-trading frenzy. |
 | `TRADE_INTERVAL` | 5m | Bar size for signals: `1m 2m 3m 5m 10m 15m 30m 1h`. 1m trades more often (more costs, more noise) — all "bars" below scale with it. |
+| `STOP_ATR_MULT` / `RECENT_LOW_BARS` | 1.5 / 5 | Stop construction. Widen both on faster bars (1m starting point: 2.5 / 15), otherwise 1-minute noise shakes you out. |
+| `MIN_VOLATILITY_PCT` / `MAX_VOLATILITY_PCT` | auto | The ATR% gate. Auto-scales from the 5m baseline (0.3–4.0%) by √interval: ~0.13–1.79% on 1m. Set explicitly to override. |
 
 ## "How big are my bets?" (the important table)
 

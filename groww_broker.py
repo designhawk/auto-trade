@@ -19,7 +19,7 @@ Documentation: https://groww.in/trade-api/docs/python-sdk
 import os
 import time
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 import pytz
 import pandas as pd
@@ -350,7 +350,7 @@ class GrowwBroker(BrokerClient):
                 # Fetch from last trading day to ensure we have enough data
                 days_back = 1
                 while days_back < 7:
-                    test_date = end_time - pd.Timedelta(days=days_back)
+                    test_date = end_time - timedelta(days=days_back)
                     if test_date.weekday() < 5:  # Monday = 0, Friday = 4
                         start_time = test_date.replace(hour=9, minute=15, second=0, microsecond=0)
                         break
@@ -359,16 +359,16 @@ class GrowwBroker(BrokerClient):
                 # Daily/weekly intervals
                 if interval.endswith("m"):
                     minutes = int(interval[:-1]) * bars
-                    start_time = end_time - pd.Timedelta(minutes=minutes)
+                    start_time = end_time - timedelta(minutes=minutes)
                 elif interval.endswith("h"):
                     hours = int(interval[:-1]) * bars
-                    start_time = end_time - pd.Timedelta(hours=hours)
+                    start_time = end_time - timedelta(hours=hours)
                 elif interval == "1d":
-                    start_time = end_time - pd.Timedelta(days=bars)
+                    start_time = end_time - timedelta(days=bars)
                 elif interval == "1w":
-                    start_time = end_time - pd.Timedelta(weeks=bars)
+                    start_time = end_time - timedelta(weeks=bars)
                 else:
-                    start_time = end_time - pd.Timedelta(days=bars)
+                    start_time = end_time - timedelta(days=bars)
             
             # Fetch historical data (groww_symbol format: "NSE-RELIANCE")
             response = self._client.get_historical_candles(

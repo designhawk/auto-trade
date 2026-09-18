@@ -25,6 +25,18 @@ def _parse_hhmm_list(raw: str) -> list:
     return out
 
 
+def _volatility_bounds(interval_seconds: int) -> tuple:
+    """
+    ATR%% gate bounds (min, max) scaled ~sqrt(time) from the 5m baseline.
+
+    0.3%-4.0% on 5-minute bars is the reference; 1-minute bars get roughly
+    sqrt(1/5) of that (0.13%-1.79%), so the gate means the same thing in
+    "how much this bar can move" terms at any interval.
+    """
+    scale = (interval_seconds / 300.0) ** 0.5
+    return round(0.3 * scale, 3), round(4.0 * scale, 3)
+
+
 class Config:
     """Trading system configuration."""
 
@@ -53,6 +65,16 @@ class Config:
     TRADE_INTERVAL = os.getenv("TRADE_INTERVAL", "5m")
     TRADE_INTERVAL_SECONDS = _BAR_SECONDS.get(TRADE_INTERVAL, 300)
     TRADE_INTERVAL_MINUTES = max(1, TRADE_INTERVAL_SECONDS // 60)
+
+    # Stop construction (wider stops matter more on faster bars where
+    # per-bar noise is small; both knobs are env-overridable)
+    STOP_ATR_MULT = float(os.getenv("STOP_ATR_MULT", "1.5"))
+    RECENT_LOW_BARS = int(os.getenv("RECENT_LOW_BARS", "5"))
+
+    # Volatility gate bounds (ATR%%), interval-scaled from the 5m baseline
+    _VOL_MIN, _VOL_MAX = _volatility_bounds(TRADE_INTERVAL_SECONDS)
+    MIN_VOLATILITY_PCT = float(os.getenv("MIN_VOLATILITY_PCT", str(_VOL_MIN)))
+    MAX_VOLATILITY_PCT = float(os.getenv("MAX_VOLATILITY_PCT", str(_VOL_MAX)))
 
     # Risk
     MAX_POSITION_PCT = float(os.getenv("MAX_POSITION_PCT", "0.08"))

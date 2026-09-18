@@ -36,7 +36,7 @@ Plus one housekeeping rule: **cooldown** — after trading a stock, the bot igno
 The bot creates a **signal** — a little plan that says:
 
 - **Entry price:** buy around the current price
-- **Stop-loss:** the lower of (a) the lowest price of the last 5 bars, or (b) current price minus 1.5× its normal wiggle-room (ATR). If even that safety net is too wide (more than ~2.5% away), the whole trade is cancelled — too risky.
+- **Stop-loss:** the higher (tighter) of (a) the lowest price of the last `RECENT_LOW_BARS` bars, or (b) current price minus `STOP_ATR_MULT` × its normal wiggle-room (ATR). If even that safety net is too wide (more than `MAX_STOP_LOSS_PCT` away), the whole trade is cancelled — too risky.
 - **Take-profit:** entry + 2× the risk. Risk ₹2 per share → aim to make ₹4. That's the "1:2 risk-reward" rule.
 - **Confidence:** a 0–1 score from volume strength and trend strength. Higher confidence = slightly bigger position (see Risk Management).
 
@@ -47,6 +47,14 @@ Then the signal goes to the safety department (risk manager), which can still sa
 - **Never sells short** (betting a stock will fall). It only buys rising stocks.
 - **Never generates sell signals.** Exits (stop-loss, take-profit, half-profit, scratch, end-of-day) are handled separately — see Operations.
 - **Never trades pre-market, after 14:45, or overnight.** No fresh bets late in the day, nothing held while you sleep.
+
+## Tuning for your interval
+
+The numbers above describe **5-minute bars**. Because a bar means something different at every interval, two parts adapt and a few should be set together:
+
+- **Auto-scaled:** the volatility gate (0.3%–4% ATR on 5m) scales with the interval — about **0.13%–1.79% on 1m** and 0.5%–6.9% on 15m — so "dead bars" and "wild bars" mean the same thing at any speed. Override with `MIN_VOLATILITY_PCT` / `MAX_VOLATILITY_PCT` if you disagree.
+- **Set these together when you change interval.** Recommended 1m starting set: `LOOKBACK=60` (60-min breakout window), `COOLDOWN_BARS=30` (30 min), `STOP_ATR_MULT=2.5` + `RECENT_LOW_BARS=15` (wider stops: 1-minute noise is tiny, and a stop that hugs the last 5 minutes gets shaken out), `MAX_STOP_LOSS_PCT=0.01` (1% cap), `SCRATCH_BARS=30` (give a dead trade 30 min, not 30 × 1-minute panic).
+- **Why wider stops matter on 1m:** costs (~0.1–0.15% round trip) are the same on every interval, but 1m targets are smaller — a tiny stop makes costs eat most of the reward.
 
 ## Beginner takeaways
 

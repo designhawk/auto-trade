@@ -40,6 +40,8 @@ class IntradayMomentumStrategy(BaseStrategy):
         trend_lookback: int = 20,  # Lowered from 50 for intraday (50 EMA on 5m = 4hrs)
         trend_ema: int = 20,  # 15m trend filter span
         vwap_required: bool = True,  # require close above session VWAP
+        stop_atr_mult: float = 1.5,  # stop distance in ATRs (widen on 1m)
+        recent_low_bars: int = 5,  # recent-low window for the stop floor
     ):
         self.lookback = lookback
         self.volume_multiplier = volume_multiplier
@@ -49,6 +51,8 @@ class IntradayMomentumStrategy(BaseStrategy):
         self.trend_lookback = trend_lookback
         self.trend_ema = trend_ema
         self.vwap_required = vwap_required
+        self.stop_atr_mult = stop_atr_mult
+        self.recent_low_bars = recent_low_bars
         self.last_signal_bar = {}
 
     @property
@@ -148,8 +152,8 @@ class IntradayMomentumStrategy(BaseStrategy):
         # 3. Recent 5-bar average volume (smoother, matches selector)
         recent_avg_volume = df["volume"].tail(5).mean()
 
-        # 4. Recent 5-bar low for stop loss
-        recent_low = df["low"].tail(5).min()
+        # 4. Recent low for stop loss (window scales with the bar interval)
+        recent_low = df["low"].tail(self.recent_low_bars).min()
 
         # 4. ATR for dynamic stop loss
         atr = self.calculate_atr(df)
@@ -196,7 +200,7 @@ class IntradayMomentumStrategy(BaseStrategy):
 
         if buy_signal:
             # Calculate stop loss (use ATR or recent low, whichever is tighter)
-            atr_stop = current_price - (atr * 1.5)
+            atr_stop = current_price - (atr * self.stop_atr_mult)
             stop_loss = max(recent_low, atr_stop)
 
             # Check if stop loss is within acceptable range

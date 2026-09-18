@@ -36,6 +36,18 @@ def test_config_parse_and_ordering():
     assert config.TRADE_INTERVAL_SECONDS >= 60
     assert config.TRADE_INTERVAL_MINUTES >= 1
     assert config.TRADE_INTERVAL_SECONDS % config.TRADE_INTERVAL_MINUTES == 0
+    assert 0 < config.MIN_VOLATILITY_PCT < config.MAX_VOLATILITY_PCT
+    assert config.STOP_ATR_MULT > 0 and config.RECENT_LOW_BARS >= 1
+
+
+def test_volatility_bounds_scale_with_interval():
+    from config import _volatility_bounds
+
+    assert _volatility_bounds(300) == (0.3, 4.0)  # 5m baseline unchanged
+    lo1, hi1 = _volatility_bounds(60)  # 1m
+    assert 0.1 < lo1 < 0.2 and 1.5 < hi1 < 2.0
+    lo15, hi15 = _volatility_bounds(900)  # 15m
+    assert lo15 > 0.3 and hi15 > 4.0
 
 
 def test_live_trader_wires_min_cash_reserve(tmpdb, monkeypatch):
@@ -48,6 +60,8 @@ def test_live_trader_wires_min_cash_reserve(tmpdb, monkeypatch):
     t = LiveTrader(strategy=IntradayMomentumStrategy(), broker=_Broker({}),
                    initial_capital=100_000)
     assert t.risk_manager.min_cash_reserve == 12345.0
+    assert t.risk_manager.min_volatility_pct == config_mod.config.MIN_VOLATILITY_PCT
+    assert t.risk_manager.max_volatility_pct == config_mod.config.MAX_VOLATILITY_PCT
 
 
 def test_universe_integrity():
