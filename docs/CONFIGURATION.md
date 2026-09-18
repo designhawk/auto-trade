@@ -20,7 +20,8 @@ All settings live in one file: **`.env`** (your private copy; `.env.example` sho
 | `LOOKBACK` | 20 | "Recent high" window for breakouts. Shorter = more (worse?) signals; longer = fewer, stronger ones. |
 | `VOLUME_MULTIPLIER` | 1.5 | How much heavier than average the volume must be. Lower = more trades, more fakes. |
 | `TREND_EMA` / `VWAP_REQUIRED` | 20 / true | The two confirmation filters. Turning VWAP off lets the bot buy weak stocks below the day's fair price — not recommended until you know why. |
-| `COOLDOWN_BARS` | 15 | Breather after trading a stock (~75 min). Lower = possible over-trading frenzy. |
+| `COOLDOWN_BARS` | 15 | Breather after trading a stock, in bars (~75 min on 5m, ~15 min on 1m). Lower = possible over-trading frenzy. |
+| `TRADE_INTERVAL` | 5m | Bar size for signals: `1m 2m 3m 5m 10m 15m 30m 1h`. 1m trades more often (more costs, more noise) — all "bars" below scale with it. |
 
 ## "How big are my bets?" (the important table)
 

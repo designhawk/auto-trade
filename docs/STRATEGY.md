@@ -2,14 +2,14 @@
 
 The bot follows one classic beginner-friendly idea: **momentum breakout**. In plain English: *when a stock suddenly pushes above the highest price it has touched recently, and lots of people are buying along, it often keeps rising for a while.* The bot tries to ride that short burst and get out quickly.
 
-It does NOT predict the future, read news, or "know" anything. It just checks 7 yes/no conditions every 5 minutes. **All 7 must be yes**, otherwise no trade. That strictness is deliberate — most of the time the answer is "do nothing," which is itself a lesson: good traders wait.
+It does NOT predict the future, read news, or "know" anything. It just checks 7 yes/no conditions on every bar (5-minute bars by default; `TRADE_INTERVAL=1m` switches to 1-minute bars). **All 7 must be yes**, otherwise no trade. That strictness is deliberate — most of the time the answer is "do nothing," which is itself a lesson: good traders wait.
 
 ## The 7 checks, translated
 
 Imagine a stock trading around ₹500 at 11 AM:
 
 1. **Breakout — "Is it making a fresh high?"**
-   The current price must be above the highest price of the last ~20 five-minute bars (roughly the last hour and a half). A fresh high suggests buyers are in control *right now*.
+   The current price must be above the highest price of the last ~20 bars (≈100 minutes on 5-minute bars, ≈20 minutes on 1-minute bars). A fresh high suggests buyers are in control *right now*.
 
 2. **Volume — "Is the crowd joining in?"**
    The last few minutes must show clearly heavier trading than that stock's recent average (about 1.5×). A price jump *without* volume is often a fake-out — one big order, then nothing. Volume is the crowd confirming the move.
@@ -52,4 +52,5 @@ Then the signal goes to the safety department (risk manager), which can still sa
 
 - Notice how *rare* trades should be: 7 simultaneous conditions is a high bar. If your bot trades 50 times a day, something is misconfigured.
 - Every number here (20 bars, 1.5× volume, RSI 30–75, 2:1 reward) is a *choice*, not a law of nature. They're adjustable in `.env` — and the daily report's MFE/MAE section tells you whether they're well chosen.
+- The defaults are tuned for **5-minute bars**. Switching to 1-minute bars (or any other interval) changes every time horizon — 20 bars means 20 minutes instead of ~100 — so expect a different trade frequency and retune deliberately, one knob at a time.
 - Unproven edge, honest scaffolding: this exact recipe has no proven profitability. Treat it as your *first* recipe to test, question, and improve — that's the whole point of the project.

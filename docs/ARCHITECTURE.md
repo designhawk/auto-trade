@@ -9,7 +9,7 @@ Prices flow in from Groww through three pipes (history charts, quick price check
 ## The journey of one trading day, step by step
 
 ```
-Morning                        All day, every 5 min              Evening
+Morning                        All day, every bar                Evening
 ───────                        ───────────────────              ───────
 Groww prices ──► SELECTOR ──► watchlist of 30 ──► TRADER ──► sells everything
    (charts)       (grades +       (the squad)        │          (15:00–15:25)

@@ -21,7 +21,7 @@ python logs.py trader -f   # the trader's live diary, line by line
 | Time | The bot... | You... |
 |---|---|---|
 | ~9:00 | Photocopies yesterday's diary (backup), picks 30 stocks, subscribes to their live price feed | Start `run.py`, get chai |
-| 9:15–14:30 | Checks all 30 stocks every 5 min; buys breakouts, manages open trades | Nothing. Seriously — don't touch it. Watching every tick teaches anxiety, not skill. |
+| 9:15–14:30 | Checks all 30 stocks every bar (5 min default; 1 min with `TRADE_INTERVAL=1m`); buys breakouts, manages open trades | Nothing. Seriously — don't touch it. Watching every tick teaches anxiety, not skill. |
 | 9:30, 11:00 | Quietly swaps dull stocks for livelier ones | Nothing |
 | 14:30–15:20 | Tightens safety nets, stops new entries (14:45), sells down gradually | Start paying attention — this is when the day's result locks in |
 | 15:25 | Emergency sell-all if anything remains | Nothing left to do |
@@ -53,7 +53,7 @@ Read in this order: (1) Total P&L — the score. (2) Win rate + profit factor �
 - `python run.py --monitor` — everything plus a live log tail in the same window.
 - `python live_trader.py --capital 100000` — run the trader directly with custom pretend capital. (`--live` asks for typed CONFIRM but still only paper-trades — the read-only design guarantees it.)
 - `python logs.py [api|trader|all] [-n 50] [-f] [--clear]` — browse or clear old diaries.
-- `python -m pytest tests/ -q` — 74 self-tests. Run after any change you make to the code.
+- `python -m pytest tests/ -q` — 76 self-tests. Run after any change you make to the code.
 - `python stock_selector.py` — tiny demo: ranks 5 famous stocks so you can see scoring work.
 - `python tools/update_universe.py` — refresh the NIFTY 500 stock list from NSE (run every few weeks; index membership changes quarterly).
 

@@ -33,6 +33,21 @@ def test_config_parse_and_ordering():
            (config.FULL_EXIT_HOUR, config.FULL_EXIT_MINUTE) <= \
            (config.MARKET_END_HOUR, config.MARKET_END_MINUTE)
     assert config.SLIPPAGE_SEED is None or isinstance(config.SLIPPAGE_SEED, int)
+    assert config.TRADE_INTERVAL_SECONDS >= 60
+    assert config.TRADE_INTERVAL_MINUTES >= 1
+    assert config.TRADE_INTERVAL_SECONDS % config.TRADE_INTERVAL_MINUTES == 0
+
+
+def test_live_trader_wires_min_cash_reserve(tmpdb, monkeypatch):
+    import config as config_mod
+    from live_trader import LiveTrader
+    from intraday_strategy import IntradayMomentumStrategy
+    from test_trader_flows import _Broker
+
+    monkeypatch.setattr(config_mod.config, "MIN_CASH_RESERVE", 12345.0)
+    t = LiveTrader(strategy=IntradayMomentumStrategy(), broker=_Broker({}),
+                   initial_capital=100_000)
+    assert t.risk_manager.min_cash_reserve == 12345.0
 
 
 def test_universe_integrity():

@@ -42,7 +42,7 @@ def _flat_5m(price=100.0, n=60):
 
 class _Broker:
     def __init__(self, frames):
-        self.frames = frames  # symbol -> {"5m": df, "15m": df} or df
+        self.frames = frames  # symbol -> {interval: df, "15m": df} or df
 
     def connect(self):
         return True
@@ -58,7 +58,7 @@ class _Broker:
         out = {}
         for s in symbols:
             f = self.frames[s]
-            df = f["5m"] if isinstance(f, dict) else f
+            df = f[config.TRADE_INTERVAL] if isinstance(f, dict) else f
             out[s] = float(df["close"].iloc[-1])
         return out
 
@@ -75,7 +75,7 @@ def _trader(frames, capital=1_000_000):
 def test_entry_end_to_end(tmpdb, monkeypatch):
     monkeypatch.setattr(LiveTrader, "_ist_now",
                         staticmethod(lambda: datetime(2026, 1, 1, 10, 0)))
-    t = _trader({"E": {"5m": _breakout_5m(), "15m": _up_15m()}})
+    t = _trader({"E": {config.TRADE_INTERVAL: _breakout_5m(), "15m": _up_15m()}})
     t.watchlist = ["E"]
     t.on_bar()
     assert t.paper_portfolio.has_position("E")
@@ -92,7 +92,7 @@ def test_entry_end_to_end(tmpdb, monkeypatch):
 def test_entry_cutoff_blocks(tmpdb, monkeypatch):
     monkeypatch.setattr(LiveTrader, "_ist_now",
                         staticmethod(lambda: datetime(2026, 1, 1, 15, 0)))
-    t = _trader({"E": {"5m": _breakout_5m(), "15m": _up_15m()}})
+    t = _trader({"E": {config.TRADE_INTERVAL: _breakout_5m(), "15m": _up_15m()}})
     t.watchlist = ["E"]
     t.on_bar()
     assert not t.paper_portfolio.has_position("E")

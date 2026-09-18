@@ -47,6 +47,13 @@ class Config:
     TREND_EMA = int(os.getenv("TREND_EMA", "20"))  # 15m trend filter span
     VWAP_REQUIRED = os.getenv("VWAP_REQUIRED", "true").lower() == "true"
 
+    # Trading interval (bar size for signals; env-overridable)
+    _BAR_SECONDS = {"1m": 60, "2m": 120, "3m": 180, "5m": 300,
+                    "10m": 600, "15m": 900, "30m": 1800, "1h": 3600}
+    TRADE_INTERVAL = os.getenv("TRADE_INTERVAL", "5m")
+    TRADE_INTERVAL_SECONDS = _BAR_SECONDS.get(TRADE_INTERVAL, 300)
+    TRADE_INTERVAL_MINUTES = max(1, TRADE_INTERVAL_SECONDS // 60)
+
     # Risk
     MAX_POSITION_PCT = float(os.getenv("MAX_POSITION_PCT", "0.08"))
     MAX_OPEN_POSITIONS = int(os.getenv("MAX_OPEN_POSITIONS", "8"))

@@ -79,6 +79,7 @@ class LiveTrader:
             daily_loss_limit_pct=config.DAILY_LOSS_LIMIT_PCT,
             max_drawdown_pct=config.MAX_DRAWDOWN_PCT,
             min_risk_reward=config.MIN_RISK_REWARD,
+            min_cash_reserve=config.MIN_CASH_RESERVE,
             heat_cap_pct=config.HEAT_CAP_PCT,
             target_vol_pct=config.TARGET_VOL_PCT,
             throttle_start_mult=config.THROTTLE_START_MULT,
@@ -222,7 +223,7 @@ class LiveTrader:
         scored = []
         for symbol in candidates:
             try:
-                df = self.broker.get_ohlcv(symbol, "5m", 60)
+                df = self.broker.get_ohlcv(symbol, config.TRADE_INTERVAL, 60)
                 score, _ = self.stock_selector.score_intraday(symbol, df)
                 if score > 0:
                     scored.append((score, symbol))
@@ -244,7 +245,7 @@ class LiveTrader:
 
     def on_bar(self) -> None:
         """
-        Every 5 minutes during market hours.
+        Every bar (config.TRADE_INTERVAL) during market hours.
 
         For each stock in watchlist:
         1. Fetch OHLCV data
@@ -267,7 +268,7 @@ class LiveTrader:
         for pos in positions:
             try:
                 symbol = pos.symbol
-                df = self.broker.get_ohlcv(symbol, "5m", 50)
+                df = self.broker.get_ohlcv(symbol, config.TRADE_INTERVAL, 50)
                 if len(df) < 2:
                     continue
 
@@ -360,7 +361,7 @@ class LiveTrader:
                 age_min = ((now - pos.entry_time).total_seconds() / 60
                            if pos.entry_time else 0)
                 if (not pos.scaled and r_mult is not None
-                        and age_min >= config.SCRATCH_BARS * 5
+                        and age_min >= config.SCRATCH_BARS * config.TRADE_INTERVAL_MINUTES
                         and r_mult < config.SCRATCH_R):
                     result = self.paper_portfolio.execute_sell(
                         symbol, pos.qty, current_price
@@ -424,7 +425,7 @@ class LiveTrader:
                     continue
 
                 # Fetch OHLCV data (5m for signals, 15m for trend filter)
-                df = self.broker.get_ohlcv(symbol, "5m", 50)
+                df = self.broker.get_ohlcv(symbol, config.TRADE_INTERVAL, 50)
 
                 if len(df) < self.strategy.required_bars():
                     continue
@@ -599,7 +600,7 @@ class LiveTrader:
                     # intraday-only invariant (never hold overnight) holds.
                     log.error(f"LTP missing for {symbol}, trying last 5m close")
                     try:
-                        df = self.broker.get_ohlcv(symbol, "5m", 5)
+                        df = self.broker.get_ohlcv(symbol, config.TRADE_INTERVAL, 5)
                         price = float(df["close"].iloc[-1]) if len(df) else None
                     except Exception as e:
                         price = None
@@ -748,6 +749,7 @@ class LiveTrader:
 
             # Run continuously during market hours
             while True:
+                tick_start = time.time()
                 now = self._ist_now()  # injectable clock (tests pin it)
                 current_hour = now.hour
                 current_minute = now.minute
@@ -774,9 +776,11 @@ class LiveTrader:
                         f"Market {'not open yet' if not market_open else 'closed'}, skipping on_bar"
                     )
 
-                # Wait 5 minutes (300 seconds) between iterations
-                log.info(f"Waiting 5 minutes until next check...")
-                time.sleep(300)  # 5 minutes
+                # Wait for the next bar; subtract time already spent this tick
+                elapsed = time.time() - tick_start
+                wait = max(5, config.TRADE_INTERVAL_SECONDS - elapsed)
+                log.info(f"Waiting ~{wait:.0f}s until next check...")
+                time.sleep(wait)
 
             # Force close all positions (3:25 PM)
             self.force_close_all()

@@ -33,7 +33,7 @@ Even if 10 banks top the list, the bot takes at most **3 per sector**. Ten bank 
 
 ## Step 4: Re-check at 9:30 and 11:00 (the mid-morning reality check)
 
-The morning list is a prediction; the market is the answer. Twice mid-morning the bot re-scores the watchlist on live 5-minute action (distance from VWAP, fresh trend, live volume, RSI) and swaps dull names for livelier reserves. **One golden rule: stocks you already own are never evicted** — re-ranking only changes *future* entries, never disturbs open trades.
+The morning list is a prediction; the market is the answer. Twice mid-morning the bot re-scores the watchlist on live intraday action (distance from VWAP, fresh trend, live volume, RSI) and swaps dull names for livelier reserves. **One golden rule: stocks you already own are never evicted** — re-ranking only changes *future* entries, never disturbs open trades.
 
 ## Beginner takeaways
 
