@@ -183,7 +183,7 @@ class RiskManager:
             return RiskDecision(
                 approved=False,
                 adjusted_qty=0,
-                reason=f"Risk-reward {risk_reward:.1f} < {self.min_risk_reward}",
+                reason=f"Risk-reward {risk_reward:.2f} < {self.min_risk_reward}",
             )
 
         # Check 7: Volatility check (must have reasonable volatility for momentum)
