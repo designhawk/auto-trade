@@ -3,8 +3,20 @@
 NSE sector mapping for diversification caps.
 
 Coarse sectors only - used by the stock selector (max positions per sector)
-and the daily report (sector attribution). Unknown symbols map to "MISC".
+and the daily report (sector attribution).
+
+Two layers:
+1. SECTOR_MAP below - curated overrides (kept authoritative).
+2. universe.SECTORS - generated from NSE's Industry column for the current
+   NIFTY 500 universe (refresh: python tools/update_universe.py).
+
+Symbols in neither map fall back to "MISC".
 """
+
+try:
+    from universe import SECTORS as GENERATED_SECTORS
+except ImportError:  # bootstrap during regeneration
+    GENERATED_SECTORS = {}
 
 SECTOR_MAP = {
     # Energy / Oil & Gas / Power
@@ -78,5 +90,5 @@ SECTOR_MAP = {
 
 
 def sector_of(symbol: str) -> str:
-    """Return the coarse sector for a symbol (MISC if unmapped)."""
-    return SECTOR_MAP.get(symbol, "MISC")
+    """Curated mapping first, then the generated NIFTY 500 map (MISC last)."""
+    return SECTOR_MAP.get(symbol) or GENERATED_SECTORS.get(symbol) or "MISC"

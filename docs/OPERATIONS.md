@@ -53,8 +53,9 @@ Read in this order: (1) Total P&L — the score. (2) Win rate + profit factor �
 - `python run.py --monitor` — everything plus a live log tail in the same window.
 - `python live_trader.py --capital 100000` — run the trader directly with custom pretend capital. (`--live` asks for typed CONFIRM but still only paper-trades — the read-only design guarantees it.)
 - `python logs.py [api|trader|all] [-n 50] [-f] [--clear]` — browse or clear old diaries.
-- `python -m pytest tests/ -q` — 41 self-tests. Run after any change you make to the code.
+- `python -m pytest tests/ -q` — 74 self-tests. Run after any change you make to the code.
 - `python stock_selector.py` — tiny demo: ranks 5 famous stocks so you can see scoring work.
+- `python tools/update_universe.py` — refresh the NIFTY 500 stock list from NSE (run every few weeks; index membership changes quarterly).
 
 ## Beginner takeaways
 

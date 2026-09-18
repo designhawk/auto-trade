@@ -35,6 +35,16 @@ def test_config_parse_and_ordering():
     assert config.SLIPPAGE_SEED is None or isinstance(config.SLIPPAGE_SEED, int)
 
 
+def test_universe_integrity():
+    import universe
+    from datetime import date as _date
+
+    assert len(universe.NIFTY500) > 400, "NIFTY 500 universe looks truncated"
+    assert len(universe.NIFTY500) == len(set(universe.NIFTY500)), "duplicates"
+    assert set(universe.NIFTY500) == set(universe.SECTORS), "symbol/sector mismatch"
+    _date.fromisoformat(universe.FETCHED)  # raises if malformed
+
+
 def test_sector_coverage():
     assert sector_of("NOPE") == "MISC"
     uncovered = [s for s in config.NSE_STOCKS if sector_of(s) == "MISC"]
