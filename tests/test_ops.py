@@ -177,6 +177,28 @@ def test_sdk_noise_loggers_quieted():
     assert logging.getLogger("nats").level == logging.CRITICAL
 
 
+def test_feed_status_labels(tmp_path, monkeypatch):
+    import monitor as m
+    import config as config_mod
+
+    f = tmp_path / "live_trader_20990101.log"
+    monkeypatch.setattr(m, "_trade_logs", lambda: [f])
+
+    monkeypatch.setattr(config_mod.config, "FEED_ENABLED", False)
+    assert m._feed_status() == "disabled (REST only)"
+
+    monkeypatch.setattr(config_mod.config, "FEED_ENABLED", True)
+    f.write_text("[FEED] Streaming 30 symbols\n", encoding="utf-8")
+    assert m._feed_status() == "streaming 30 symbols"
+
+    f.write_text("[FEED] setup failed, REST fallback: nats: no servers available\n",
+                 encoding="utf-8")
+    assert m._feed_status() == "unavailable (REST)"
+
+    f.write_text("nothing feed related\n", encoding="utf-8")
+    assert m._feed_status() == "REST only"
+
+
 def test_tail_file_last_n(tmp_path, capsys):
     f = tmp_path / "t.log"
     f.write_text("\n".join(f"L{i}" for i in range(8)) + "\n")

@@ -194,6 +194,44 @@ def _last_tick_time(logs):
     return None
 
 
+def _last_feed_line():
+    """Last '[FEED] ...' line across trader logs, or None."""
+    for path in _trade_logs():
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()[-600:]
+        except OSError:
+            continue
+        for line in reversed(lines):
+            if "[FEED]" in line:
+                return line
+    return None
+
+
+def _feed_status() -> str:
+    """
+    Human-readable feed state:
+    disabled (config) / streaming N symbols / unavailable (REST) / REST only.
+    """
+    try:
+        from config import config
+
+        if not config.FEED_ENABLED:
+            return "disabled (REST only)"
+    except Exception:
+        pass
+    line = _last_feed_line()
+    if not line:
+        return "REST only"
+    if "Streaming" in line:
+        m = re.search(r"Streaming (\d+) symbols", line)
+        return f"streaming {m.group(1)} symbols" if m else "streaming"
+    if any(k in line for k in ("no servers", "not ready", "setup failed",
+                               "start failed")):
+        return "unavailable (REST)"
+    return "REST only"
+
+
 def _feed_symbols():
     """Last '[FEED] Streaming N symbols' count across trader logs, or None.
 
@@ -385,15 +423,7 @@ def render(data, log_lines=8):
         tick_color = C.GREEN if age < 150 else C.YELLOW
         if age >= 300 and is_open:
             tick_color = C.RED
-    feed_n = _feed_symbols()
-    if feed_n is not None:
-        feed_txt = f"streaming {feed_n} symbols"
-    elif rows and positions_data.get("live_prices"):
-        feed_txt = "live prices ON"
-    elif rows:
-        feed_txt = "REST fallback (feed idle)"
-    else:
-        feed_txt = "idle (no positions)"
+    feed_txt = _feed_status()
     db_txt = "ok" if status.get("database_connected") else "MISSING"
     out.append(" SYSTEM")
     out.append(f"   Trader: {_paint(tick_color, tick_txt)}    "

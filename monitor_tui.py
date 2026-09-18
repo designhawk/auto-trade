@@ -25,7 +25,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Static
 
 from monitor import (IST, collect, market_status, _clean_log_lines,
-                     _feed_symbols, _last_tick_time, _pnl_plain, _rupee)
+                     _feed_status, _last_tick_time, _pnl_plain, _rupee)
 
 
 # --------------------------------------------------------------------------
@@ -51,9 +51,8 @@ def system_text(data, logs) -> Text:
         out.append("no ticks yet", style="grey62")
     out.append("\n")
 
-    feed_n = _feed_symbols()
     out.append("Feed    ", style="grey62")
-    out.append(f"streaming {feed_n} symbols" if feed_n is not None else "idle")
+    out.append(_feed_status())
     out.append("\n")
 
     status = data.get("status") or {}
