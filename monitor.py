@@ -33,7 +33,10 @@ try:
 except ImportError:  # pragma: no cover - pytz is a hard dependency in practice
     IST = None
 
-API = "http://localhost:8002"
+# NOTE: use 127.0.0.1, not "localhost" - on Windows "localhost" can resolve
+# via IPv6 first and add ~2s per request (which looks exactly like an API
+# timeout). Verified 2026-09-18.
+API = "http://127.0.0.1:8002"
 WIDTH = 78
 
 
@@ -299,11 +302,24 @@ def _fetch(path, **params):
     return None
 
 
+def _watchlist_state():
+    """The trader's published watchlist state (logs/watchlist.json), or None."""
+    try:
+        import json
+
+        path = LOG_DIR / "watchlist.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return None
+
+
 def collect():
     """Snapshot of everything the dashboard shows."""
     logs = _tail_lines()
     if _fetch("/health") is None:
-        return {"api": False, "logs": logs}
+        return {"api": False, "logs": logs, "watchlist": _watchlist_state()}
     today = datetime.now(IST).strftime("%Y-%m-%d")
     return {
         "api": True,
@@ -313,6 +329,7 @@ def collect():
         "today": _fetch("/today"),
         "trades": _fetch("/trades", date=today, limit=500),
         "logs": logs,
+        "watchlist": _watchlist_state(),
     }
 
 

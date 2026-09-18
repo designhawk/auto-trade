@@ -116,7 +116,12 @@ def _fake_tui_data():
                        "side": "BUY", "qty": 10, "price": 100.0,
                        "exit_reason": "SIGNAL_ENTRY"}]},
         "trades": {"trades": []},
-        "logs": ["[2026-09-18 09:30:00] [INFO] [live_trader] ON-BAR: x"],
+        "logs": ["[2026-09-18 09:30:00] [INFO] [live_trader] ON-BAR: x",
+                 "[2026-09-18 09:31:00] [INFO] [live_trader] India VIX: 11.86 (ok)",
+                 "[2026-09-18 09:32:00] [ERROR] [live_trader] boom"],
+        "watchlist": {"updated": "2026-09-18T09:30:00", "count": 3,
+                      "symbols": ["RELIANCE", "PWL", "SYRMA"],
+                      "strategy": "IntradayMomentum"},
     }
 
 
@@ -129,20 +134,58 @@ def test_tui_renderables():
 
     data = _fake_tui_data()
     console = Console(file=StringIO(), width=160, no_color=True)
-    for renderable in (tui.system_text(data, data["logs"]),
+    for renderable in (tui.system_text(data),
                        tui.portfolio_text(data),
-                       tui.positions_table(data),
-                       tui.signals_table(data),
-                       tui.trades_table(data),
-                       tui.log_text(data, 5)):
+                       tui.regime_text(data)):
         console.print(renderable)
     out = console.file.getvalue()
-    assert "X" in out and "QTY" in out and "SIGNAL_ENTRY" in out
-    assert "rejected" in out and "Volatility too low" in out
-    assert "Realized" in out
+    assert "Watchlist" in out and "3 names" in out
+    assert "Rs.100,000" in out and "P&L" in out and "Open" in out
+    assert "India VIX" in out and "11.86" in out and "Entries" in out
 
 
-def test_tui_app_lifecycle(monkeypatch):
+def test_tui_vix_parse_and_entry_state(monkeypatch):
+    import pytest
+    pytest.importorskip("textual")
+    from datetime import datetime
+
+    import config as config_mod
+    import monitor_tui as tui
+
+    v, note = tui._last_vix(["[x] India VIX: 11.86 (ok)", "junk"])
+    assert v == 11.86 and note == "ok"
+    assert tui._last_vix([]) == (None, None)
+
+    assert tui._entry_state(datetime(2026, 9, 18, 10, 0)) == "OPEN"
+    assert tui._entry_state(datetime(2026, 9, 18, 15, 0)).startswith("closed")
+    monkeypatch.setattr(config_mod.config, "ENTRY_PAUSE_START", (11, 45))
+    monkeypatch.setattr(config_mod.config, "ENTRY_PAUSE_END", (13, 30))
+    assert "lunch" in tui._entry_state(datetime(2026, 9, 18, 12, 30))
+
+
+def test_tui_log_tailer(tmp_path, monkeypatch):
+    import pytest
+    pytest.importorskip("textual")
+    import monitor_tui as tui
+
+    monkeypatch.setattr(tui, "LOG_DIR", tmp_path)
+    f = tmp_path / "trader.log"
+    f.write_text("\n".join(f"line{i}" for i in range(100)) + "\n",
+                 encoding="utf-8")
+
+    tailer = tui.LogTailer(seed_lines=10)
+    assert tailer.read_new() == [f"line{i}" for i in range(90, 100)]
+    with open(f, "a", encoding="utf-8") as fh:
+        fh.write("new-line\n")
+    assert tailer.read_new() == ["new-line"]
+    assert tailer.read_new() == []  # nothing new
+    # truncation (a new run overwrote the file) -> reseed, don't stall
+    f.write_text("fresh1\nfresh2\n", encoding="utf-8")
+    assert tailer.read_new() == ["fresh1", "fresh2"]
+    tailer.close()
+
+
+def test_tui_app_lifecycle(tmp_path, monkeypatch):
     import pytest
     pytest.importorskip("textual")
     import asyncio
@@ -151,18 +194,31 @@ def test_tui_app_lifecycle(monkeypatch):
     import monitor_tui as tui
 
     monkeypatch.setattr(monitor, "_trade_logs", lambda: [])
+    monkeypatch.setattr(tui, "LOG_DIR", tmp_path)
+    (tmp_path / "trader.log").write_text(
+        "[2026-09-18 09:30:00] [INFO] [live_trader] ON-BAR: x\n"
+        "[2026-09-18 09:31:00] [ERROR] [live_trader] boom\n",
+        encoding="utf-8")
+
     data = _fake_tui_data()
     app = tui.MonitorApp(interval=60, collect_fn=lambda: data)
 
     async def run():
-        async with app.run_test(size=(140, 36)) as pilot:
+        async with app.run_test(size=(150, 45)) as pilot:
+            await pilot.pause()
             await pilot.pause()
             assert app._data is data  # collect ran on mount
             assert "market" in app.sub_title
+            assert app.query_one("#positions").row_count == 1
+            assert app.query_one("#watchlist").row_count == 3
+            app._pump_logs()  # stream the seeded log without waiting on timer
+            log_lines = " ".join(str(l) for l in app.query_one("#log").lines)
+            assert "boom" in log_lines
             await pilot.press("p")
             assert app._paused is True
             await pilot.press("r")
             assert app._paused is False
+            await pilot.press("c")
             await pilot.press("q")
 
     asyncio.run(run())

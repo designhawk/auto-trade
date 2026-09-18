@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -198,6 +199,7 @@ class LiveTrader:
 
         self._subscribe_feed()
         self._refresh_vix()
+        self._save_watchlist_state()
 
     def _subscribe_feed(self) -> None:
         """Subscribe the watchlist to streaming LTP (no-op if unsupported)."""
@@ -232,6 +234,23 @@ class LiveTrader:
         if not config.VIX_FILTER_ENABLED or self.vix_value is None:
             return None
         return config.VIX_MIN <= self.vix_value <= config.VIX_MAX
+
+    def _save_watchlist_state(self) -> None:
+        """Publish the current watchlist for the monitors (best-effort)."""
+        try:
+            from paths import LOG_DIR
+
+            payload = {
+                "updated": datetime.now().isoformat(timespec="seconds"),
+                "count": len(self.watchlist),
+                "symbols": list(self.watchlist),
+                "strategy": self.strategy.name,
+            }
+            tmp = LOG_DIR / "watchlist.json.tmp"
+            tmp.write_text(json.dumps(payload), encoding="utf-8")
+            tmp.replace(LOG_DIR / "watchlist.json")
+        except Exception as e:
+            log.error(f"watchlist state save failed: {e}")
 
     def maybe_reselect(self) -> None:
         """Re-rank watchlist at configured times (default 09:30, 11:00 IST)."""
@@ -300,6 +319,7 @@ class LiveTrader:
         log.info(f"RESELECT: dropped={dropped} added={added} watchlist={len(self.watchlist)}")
         self._subscribe_feed()
         self._refresh_vix()
+        self._save_watchlist_state()
 
     def on_bar(self) -> None:
         """

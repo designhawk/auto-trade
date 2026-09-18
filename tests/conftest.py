@@ -17,9 +17,15 @@ import config as config_mod  # noqa: E402
 
 @pytest.fixture
 def tmpdb(tmp_path, monkeypatch):
-    """Point the database at a temp file and silence re-ranking."""
+    """Point the database (and runtime state files) at a temp dir."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.db")
     db.init_db()
     monkeypatch.setattr(config_mod.config, "RESELECT_TIMES", [])
+
+    import paths
+
+    state_dir = tmp_path / "logs_state"
+    state_dir.mkdir(exist_ok=True)
+    monkeypatch.setattr(paths, "LOG_DIR", state_dir)  # watchlist.json etc.
     return tmp_path

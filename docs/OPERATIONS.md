@@ -12,7 +12,7 @@ Want to watch along? Open a second terminal:
 
 ```bash
 python monitor.py            # live dashboard: portfolio, positions (with R), signals, trades, tick health, logs
-python monitor_tui.py         # full-screen TUI version (panels, colors; q quit / p pause / r refresh)
+python monitor_tui.py         # full-screen TUI: system/portfolio/regime panels + tabs (Live Log, Positions, Signals, Trades, Watchlist); q quit / p pause / r refresh / c clear log
 python monitor.py --once     # one snapshot, then exit
 python monitor.py --follow   # raw log tail only
 python monitor.py -i 2       # refresh every 2s instead of 5s
@@ -57,7 +57,7 @@ Read in this order: (1) Total P&L — the score. (2) Win rate + profit factor �
 - `python run.py --monitor` — everything plus a live log tail in the same window.
 - `python live_trader.py --capital 100000` — run the trader directly with custom pretend capital. (`--live` asks for typed CONFIRM but still only paper-trades — the read-only design guarantees it.)
 - `python logs.py [api|trader|all] [-n 50] [-f] [--clear]` — browse or clear old diaries.
-- `python -m pytest tests/ -q` — 101 self-tests. Run after any change you make to the code.
+- `python -m pytest tests/ -q` — 103 self-tests. Run after any change you make to the code.
 - `python stock_selector.py` — tiny demo: ranks 5 famous stocks so you can see scoring work.
 - `python tools/update_universe.py` — refresh the top-750 stock universe from NSE (run every few weeks; index membership changes quarterly).
 
