@@ -66,9 +66,15 @@ class FeedManager:
         """
         Returns ({symbol: price}, parsed_any) from the streaming store.
         Raises on transport/parse failure so callers fall back to REST.
+
+        The installed SDK returns the naked station
+        ({exchange: {segment: {...}}}); some versions/docs wrap it in
+        {"ltp": ...} - both are accepted (verified live 2026-09-18).
         """
         raw = self._feed.get_ltp() or {}
-        node = ((raw.get("ltp") or {}).get("NSE") or {}).get("CASH") or {}
+        if isinstance(raw, dict) and "ltp" in raw:
+            raw = raw.get("ltp") or {}
+        node = ((raw.get("NSE") or {}).get("CASH")) or {}
         prices: dict = {}
         latest = 0.0
         for s in symbols:

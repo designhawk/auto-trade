@@ -13,7 +13,8 @@ class _FakeFeed:
     def __init__(self):
         self.subs = []
         self.unsubs = []
-        self.store = {"ltp": {"NSE": {"CASH": {}}}}
+        # Real installed-SDK shape, verified live 2026-09-18 (naked station)
+        self.store = {"NSE": {"CASH": {}}}
 
     def subscribe_ltp(self, insts):
         self.subs.append(insts)
@@ -54,10 +55,10 @@ def test_resubscribe_failure_fail_open():
 def test_get_cached_parses_and_timestamps():
     m = _mgr()
     m.resubscribe(["A", "B"], {"A": "1", "B": "2"})
-    m._feed.store = {"ltp": {"NSE": {"CASH": {
+    m._feed.store = {"NSE": {"CASH": {
         "1": {"tsInMillis": 1_000_000_000.0, "ltp": 10.5},
         "2": {"tsInMillis": 999_000_000.0, "ltp": "bad"},
-    }}}}
+    }}}
     prices, parsed = m.get_cached(["A", "B", "C"])
     assert prices == {"A": 10.5} and parsed is True
     assert m.last_ok == 1_000_000.0
@@ -66,6 +67,16 @@ def test_get_cached_parses_and_timestamps():
     m2.last_ok = 1_000_000.0
     m2.active = True
     assert m2.is_fresh(60) is False  # stale socket -> REST fallback
+
+
+def test_get_cached_wrapped_form_compat():
+    """Docs show a {'ltp': ...} wrapper; accept both shapes."""
+    m = _mgr()
+    m.resubscribe(["A"], {"A": "1"})
+    m._feed.store = {"ltp": {"NSE": {"CASH": {
+        "1": {"tsInMillis": 1_000_000_000.0, "ltp": 42.0}}}}}
+    prices, parsed = m.get_cached(["A"])
+    assert prices == {"A": 42.0} and parsed is True
 
 
 def test_stop_clears():
