@@ -183,10 +183,13 @@ class GrowwBroker(BrokerClient):
             
             # Initialize Groww API client
             self._client = GrowwAPI(self._access_token)
-            
-            # Initialize feed client
-            self._feed = GrowwFeed(self._client)
-            
+
+            # NOTE: the streaming feed (GrowwFeed/NATS socket) is created
+            # lazily in start_feed(). Creating it here would open an extra
+            # feed session for every process that merely reads data (API,
+            # tools, diagnostics) and the SDK's socket connect can block or
+            # flood errors when another session already exists.
+
             # Test connection by fetching holdings
             self._client.get_holdings_for_user(timeout=5)
             
@@ -224,8 +227,12 @@ class GrowwBroker(BrokerClient):
 
             if not config.FEED_ENABLED:
                 return False
-            if self._client is None or self._feed is None or not symbols:
+            if self._client is None or not symbols:
                 return False
+            # Lazy: connect the streaming socket only when we actually
+            # need it (see connect() note)
+            if self._feed is None:
+                self._feed = GrowwFeed(self._client)
             tokens = ensure_tokens(
                 self._client, list(symbols), ttl_days=config.INSTRUMENTS_TTL_DAYS
             )
