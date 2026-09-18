@@ -80,6 +80,15 @@ class StockSelector:
         current_price = latest["close"]
         prev_close = df["close"].iloc[-2] if len(df) >= 2 else current_price
 
+        # Price cap: with capital * MAX_POSITION_PCT per position, expensive
+        # stocks cannot buy even one share (e.g. Rs.1L * 8% = Rs.8,000 cap, so
+        # ULTRACEMCO at ~Rs.11,000 is untradeable). Don't waste watchlist slots.
+        if config.MAX_STOCK_PRICE > 0 and current_price > config.MAX_STOCK_PRICE:
+            return 0.0, {
+                "error": f"Price Rs.{current_price:,.0f} above tradeable cap "
+                         f"Rs.{config.MAX_STOCK_PRICE:,.0f}"
+            }
+
         # 1. Price vs 20 EMA (30%) - normalized to 0-100
         ema20 = df["close"].ewm(span=20, adjust=False).mean().iloc[-1]
         price_vs_ema = (current_price / ema20 - 1) * 100  # -5% to +5% typical

@@ -20,6 +20,7 @@ All settings live in one file: **`.env`** (your private copy; `.env.example` sho
 | `MIN_TURNOVER_CR` | ₹25cr | Median daily traded value (price × volume). Rupee liquidity, not share count — lets you exit without slippage. |
 | `MIN_RVOL` | 1.0 | "Stock in play" floor at re-rank: recent volume must be at least average. Below-average activity has negative expectancy (Zarattini et al. 2024). |
 | `MAX_GAP_PCT` | 5.0 | Skip stocks gapping more than this (news/circuit events; false opening ranges). |
+| `MAX_STOCK_PRICE` | 0 (off) | Rs. price cap. Excludes stocks too expensive for the position cap to buy one share (`capital × MAX_POSITION_PCT`). For a ₹1L account at 8% that's ₹8,000 — ULTRACEMCO, MRF, HONAUT etc. are untradeable and shouldn't occupy watchlist slots. |
 | `MAX_SECTOR_POSITIONS` | 3 | Max picks per sector. Lower = more diversified; higher = lets hot sectors dominate. |
 | `RESELECT_TIMES` | 09:30,11:00 | Mid-morning re-ranks. Remove them and the morning list never adapts. |
 | `LOOKBACK` | 20 | "Recent high" window for breakouts. Shorter = more (worse?) signals; longer = fewer, stronger ones. |

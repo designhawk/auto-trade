@@ -95,6 +95,24 @@ def test_selection_filters_turnover_and_atr():
     assert syms == ["GOOD"], syms
 
 
+def test_price_cap_excludes_expensive_stocks(monkeypatch):
+    """Stocks above capital x MAX_POSITION_PCT can't buy 1 share - exclude."""
+    import config as config_mod
+
+    monkeypatch.setattr(config_mod.config, "MIN_DAILY_ATR_PCT", 0.0)
+    monkeypatch.setattr(config_mod.config, "MAX_DAILY_ATR_PCT", 100.0)
+    sel = StockSelector(_BoomBroker())
+    df = _trend_df(start=9000.0, step=5.0)  # ~Rs.9,000+ per share
+
+    monkeypatch.setattr(config_mod.config, "MAX_STOCK_PRICE", 0.0)
+    score, _ = sel.calculate_momentum_score("X", df)
+    assert score > 0  # without the cap it qualifies
+
+    monkeypatch.setattr(config_mod.config, "MAX_STOCK_PRICE", 8000.0)
+    score, det = sel.calculate_momentum_score("X", df)
+    assert score == 0.0 and "cap" in det["error"]
+
+
 def test_rvol_gate_in_score_intraday():
     sel = StockSelector(_BoomBroker())
     hot = _trend_df(n=40, step=0.6)  # constant volume -> rvol == 1.0

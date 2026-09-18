@@ -192,6 +192,10 @@ class Config:
     MIN_TURNOVER_CR = float(os.getenv("MIN_TURNOVER_CR", "25"))  # median daily Rs.cr
     MIN_RVOL = float(os.getenv("MIN_RVOL", "1.0"))  # "stocks in play" floor
     MAX_GAP_PCT = float(os.getenv("MAX_GAP_PCT", "5.0"))  # skip extreme gaps
+    # Price cap (Rs., 0 = off): exclude stocks too expensive for the position
+    # cap to buy even 1 share (capital * MAX_POSITION_PCT). For a Rs.1L account
+    # at 8% that is Rs.8,000 - ULTRACEMCO, MRF etc. are untradeable.
+    MAX_STOCK_PRICE = float(os.getenv("MAX_STOCK_PRICE", "0"))
 
 
 config = Config()
