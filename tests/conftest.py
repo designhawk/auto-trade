@@ -28,5 +28,6 @@ def tmpdb(tmp_path, monkeypatch):
     state_dir = tmp_path / "logs_state"
     state_dir.mkdir(exist_ok=True)
     monkeypatch.setattr(paths, "LOG_DIR", state_dir)  # watchlist.json etc.
+    monkeypatch.setattr(paths, "REPORT_DIR", tmp_path / "reports")  # no real-dir writes
     monkeypatch.setattr(db, "BACKUP_DIR", tmp_path / "backups")  # no real-dir dumps
     return tmp_path
