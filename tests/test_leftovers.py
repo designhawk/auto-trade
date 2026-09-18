@@ -147,11 +147,15 @@ def test_selector_atr_and_empty():
     assert sel.select_top_stocks([], top_n=5) == []
 
 
-def test_monitor_down_defaults():
+def test_monitor_down_renders(monkeypatch):
     import monitor
-    st = monitor.get_status()  # no server running in tests
-    assert st["api"]["status"] == "[X] Down"
-    assert monitor.get_recent_logs() == [] or isinstance(monitor.get_recent_logs(), list)
+
+    monkeypatch.setattr(monitor, "_fetch", lambda *a, **k: None)
+    monkeypatch.setattr(monitor, "_trade_logs", lambda: [])
+    data = monitor.collect()
+    assert data["api"] is False
+    out = monitor.render(data)
+    assert "API DOWN" in out
 
 
 def test_run_wiring_post_close(tmpdb, monkeypatch, tmp_path):

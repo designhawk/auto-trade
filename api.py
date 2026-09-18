@@ -256,6 +256,22 @@ def get_positions():
                 entry_price = float(row[2])
                 current_price = live_prices.get(symbol, entry_price)
 
+                # Best-effort plan levels from the latest approved signal
+                # (signals table only; in-memory trailing/breakeven moves
+                # are not persisted, so R is an estimate vs the plan)
+                stop_loss = take_profit = r_multiple = None
+                sig = cursor.execute("""
+                    SELECT entry_price, stop_loss, take_profit FROM signals
+                    WHERE symbol = ? AND approved = 1 AND action = 'BUY'
+                    ORDER BY timestamp DESC LIMIT 1
+                """, (symbol,)).fetchone()
+                if sig and sig[1] is not None and sig[0] is not None:
+                    stop_loss = float(sig[1])
+                    take_profit = float(sig[2]) if sig[2] is not None else None
+                    risk = float(sig[0]) - stop_loss
+                    if risk > 0:
+                        r_multiple = round((current_price - float(sig[0])) / risk, 2)
+
                 positions.append({
                     "symbol": symbol,
                     "side": "BUY",
@@ -263,7 +279,10 @@ def get_positions():
                     "current_price": current_price,
                     "qty": qty,
                     "value": current_price * qty,
-                    "entry_time": str(row[3])
+                    "entry_time": str(row[3]),
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit,
+                    "r_multiple": r_multiple,
                 })
 
             return {

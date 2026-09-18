@@ -8,7 +8,7 @@ While the bot runs, a small website on your computer (http://localhost:8002) ser
 |---|---|---|
 | `/today` | **Your morning briefing:** how many ideas, how many approved, how many trades, today's profit | Anytime — this is the one page that matters |
 | `/portfolio` | Cash left, value of open trades, number of positions, today's P&L | Mid-day, to see how the day is going |
-| `/positions` | Each open trade: what you paid vs what it's worth now | When you're curious "what do I own right now?" |
+| `/positions` | Each open trade: what you paid vs what it's worth now, with planned SL/TP and R-multiple | When you're curious "what do I own right now?" |
 | `/trades` | Every completed trade with profit/loss | Evening review |
 | `/signals` | Every idea including rejected ones + reasons | When learning *why* trades didn't happen |
 | `/sessions` | Past days' report cards + all-time totals | Weekly review: "am I improving?" |

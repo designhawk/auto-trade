@@ -63,7 +63,7 @@ That's it — the bot starts its website (for the dashboard) and the trader. In 
 | Command | What it does |
 |---|---|
 | `python run.py` | Start everything (website + trader). Press `Ctrl+C` to stop. |
-| `python monitor.py` | Live text dashboard — cash, open trades, today's profit. |
+| `python monitor.py` | Live terminal dashboard — portfolio, positions with R-multiples, today's signals/trades, feed & tick health, color-coded logs. |
 | `python logs.py trader -f` | Watch the trader's diary in real time. |
 | `python report.py` | Yesterday's/today's report card (profit, win rate, costs, lessons). |
 | `python -m pytest tests/ -q` | Self-check: 41 automated tests proving the parts work. |
