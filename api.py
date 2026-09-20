@@ -464,13 +464,26 @@ a{color:#7cb8ff;text-decoration:none}
 button{background:#1d2b45;border:1px solid #2c3d5c;color:#e2e8f0;border-radius:8px;
  padding:6px 12px;font-size:13px}
 .foot{margin-top:22px;color:#5c718c;font-size:11px}
+.sysline{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:10px;font-size:12px}
+.seg .k{color:#8aa0b8;text-transform:uppercase;font-size:10px;letter-spacing:.04em;margin-right:3px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:#141f33;border:1px solid #22314b;border-radius:8px;padding:4px 8px;font-size:12px}
+.chip .small{font-size:10px}
+details summary{cursor:pointer}
+pre{background:#141f33;border:1px solid #22314b;border-radius:10px;padding:10px;
+ margin:0;max-height:320px;overflow:auto;font-size:11px;line-height:1.5;white-space:pre-wrap}
+.lerr{color:#f87171}.lwarn{color:#fbbf24}.lsig{color:#22d3ee}
 </style></head><body>
 <h1>Auto Trade &middot; Live</h1>
 <div class="sub" id="when">loading&hellip;</div>
-<div class="grid" id="summary"></div>
+<div class="sysline" id="sys"><span class="seg mut">waiting&hellip;</span></div>
+<h2>Portfolio</h2><div class="grid" id="summary"></div>
+<h2>Regime</h2><div class="grid" id="regime"></div>
 <h2>Positions</h2><div id="positions" class="small">&ndash;</div>
+<h2>Watchlist</h2><div id="watch" class="small">&ndash;</div>
 <h2 id="sigH">Latest signals</h2><div id="signals" class="small">&ndash;</div>
 <h2 id="trdH">Latest trades</h2><div id="trades" class="small">&ndash;</div>
+<h2>Live log</h2><div id="log" class="small">&ndash;</div>
 <h2>Reports</h2><div id="reports" class="small">&ndash;</div>
 <div class="foot"><button onclick="refresh()">Refresh now</button>
  &nbsp;auto-refresh: 30s</div>
@@ -484,13 +497,47 @@ function card(k,v,s,cls){return '<div class="card"><div class="k">'+esc(k)+
   '</div><div class="v '+esc(cls||'')+'">'+esc(v)+'</div>'+
   '<div class="s">'+esc(s||'')+'</div></div>';}
 function row(l,r){return '<div class="row">'+l+'<span>'+r+'</span></div>';}
+function seg(k,v,cls){return '<span class="seg"><span class="k">'+esc(k)+'</span>'+
+  '<span class="'+esc(cls||'')+'">'+esc(v)+'</span></span>';}
 async function j(u){var r=await fetch(u,{cache:'no-store'});
   if(!r.ok) throw new Error(u+' '+r.status); return r.json();}
 function hhmm(ts){return ts?String(ts).substr(11,5):'';}
+function ageTxt(a){
+  if(a==null) return 'not running';
+  if(a<150) return a+'s ago';
+  if(a<3600) return Math.round(a/60)+'m ago';
+  var h=Math.round(a/3600);
+  return (h<48 ? h+'h' : Math.round(h/24)+'d')+' ago';
+}
+function ageCls(a){return a==null?'mut':(a<150?'pos':(a<300?'':'neg'));}
 async function refresh(){
   try{
-    var d = await Promise.all([j('/portfolio'),j('/positions'),j('/today'),j('/reports_list')]);
-    var pf=d[0], po=d[1], td=d[2], rp=d[3];
+    var d = await Promise.all([j('/portfolio'),j('/positions'),j('/today'),j('/reports_list'),j('/tui')]);
+    var pf=d[0], po=d[1], td=d[2], rp=d[3], tu=d[4];
+    var wl=tu.watchlist||{}, rg=tu.regime||{};
+    var tickAge=(tu.trader||{}).last_tick_age_s;
+    var tickTxt=ageTxt(tickAge);
+    var tickCls=ageCls(tickAge);
+    el('sys').innerHTML = seg('Trader',tickTxt,tickCls)+seg('Feed',tu.feed||'?','')+
+      seg('DB',tu.db?'ok':'MISSING',tu.db?'pos':'neg')+
+      seg('Watchlist',(wl.count||0)+' names'+(wl.stale?' (stale)':''),'')+
+      seg('API','up','pos');
+    el('regime').innerHTML =
+      card('Entries',rg.entries||'?','',String(rg.entries||'').indexOf('OPEN')===0?'pos':'mut')+
+      card('India VIX',(rg.vix==null?'-':Number(rg.vix).toFixed(2)),(rg.vix_note||'fail-open'),'')+
+      card('Trade cap',(rg.buys_today||0)+' / '+(rg.trade_cap==null?'?':rg.trade_cap),'buys today','')+
+      card('Market',rg.market||'?',rg.market_time||'','');
+    var wrows=(wl.symbols||[]).map(function(s){return '<span class="chip">'+esc(s.symbol)+
+      ' <span class="small">'+esc(s.sector)+'</span></span>';}).join('');
+    el('watch').innerHTML = wrows?('<details><summary>'+esc(wl.count||0)+' names'+
+      (wl.updated?(' &middot; updated '+esc(String(wl.updated).substr(11,5))):'')+
+      '</summary><div class="chips" style="margin-top:8px">'+wrows+'</div></details>')
+      :'<div class="row mut"><span>not published yet</span></div>';
+    var llines=(tu.log_lines||[]).map(function(l){
+      var cls=l.indexOf('[ERROR]')>=0?'lerr':(l.indexOf('[WARNING]')>=0?'lwarn':
+        (l.indexOf('SIGNAL')>=0?'lsig':''));
+      return '<span class="'+cls+'">'+esc(l)+'</span>';}).join(String.fromCharCode(10));
+    el('log').innerHTML='<pre>'+llines+'</pre>';
     var sigDate=null, todayStr=new Date().toLocaleDateString('en-CA');
     if(((td.signals||[]).length===0) && ((td.trades||[]).length===0) &&
        pf.latest_session_date && pf.latest_session_date!==todayStr){
@@ -509,9 +556,14 @@ async function refresh(){
     var rows=(po.positions||[]).map(function(p){
       var now=p.current_price||p.entry_price||0;
       var pv=(now-(p.entry_price||0))*(p.qty||0);
+      var extra=[];
+      if(p.r_multiple!=null) extra.push('R '+(p.r_multiple>0?'+':'')+Number(p.r_multiple).toFixed(1));
+      if(p.stop_loss) extra.push('SL '+Number(p.stop_loss).toFixed(2));
+      if(p.take_profit) extra.push('TP '+Number(p.take_profit).toFixed(2));
       return row('<span><span class="sym">'+esc(p.symbol)+'</span> '+
         '<span class="small">x'+esc(p.qty)+' @ '+esc((p.entry_price||0).toFixed(2))+
-        ' &rarr; '+esc(now.toFixed(2))+'</span></span>',
+        ' &rarr; '+esc(now.toFixed(2))+'</span>'+
+        (extra.length?'<br><span class="small">'+esc(extra.join('  '))+'</span>':'')+'</span>',
         '<span class="'+signCls(pv)+'">'+esc(rs(pv))+'</span>');
     }).join('');
     el('positions').innerHTML = rows || '<div class="row mut"><span>flat</span></div>';
@@ -543,6 +595,92 @@ async function refresh(){
 }
 refresh(); setInterval(refresh, 30000);
 </script></body></html>"""
+
+
+@app.get("/tui")
+def tui_panels():
+    """Everything the monitor TUI shows (system, regime, watchlist, log)."""
+    from monitor import (IST, _clean_log_lines, _feed_status, _last_tick_time,
+                         _tail_lines, market_status)
+
+    lines = _clean_log_lines(_tail_lines(1200))
+    # Legacy test-run pollution (pre test-shield) wrote pytest temp paths
+    # into the real log; never real trading lines, safe to drop.
+    lines = [l for l in lines if "pytest-of-" not in l]
+    tick = _last_tick_time(lines)
+    age = int((datetime.now() - tick).total_seconds()) if tick else None
+
+    vix = vix_note = None
+    vix_re = re.compile(r"India VIX: ([\d.]+) \(([^)]+)\)")
+    for line in reversed(lines):
+        m = vix_re.search(line)
+        if m:
+            try:
+                vix, vix_note = float(m.group(1)), m.group(2)
+            except ValueError:
+                pass
+            break
+
+    wl = {}
+    try:
+        from paths import LOG_DIR
+
+        wl = json.loads((LOG_DIR / "watchlist.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        wl = {}
+    from sectors import sector_of
+
+    updated = str(wl.get("updated") or "")
+    stale = bool(updated) and updated[:10] != date.today().isoformat()
+    symbols = [{"symbol": str(s), "sector": sector_of(str(s))}
+               for s in (wl.get("symbols") or [])]
+
+    buys = sum(1 for t in get_trades_for_date(date.today().isoformat())
+               if t.get("side") == "BUY")
+
+    now_ist = datetime.now(IST)
+    hm = (now_ist.hour, now_ist.minute)
+    if hm < (config.ENTRY_START_HOUR, config.ENTRY_START_MINUTE):
+        entries = f"opens {config.ENTRY_START_HOUR}:{config.ENTRY_START_MINUTE:02d}"
+    elif hm >= (config.ENTRY_CUTOFF_HOUR, config.ENTRY_CUTOFF_MINUTE):
+        entries = (f"closed ({config.ENTRY_CUTOFF_HOUR}:"
+                   f"{config.ENTRY_CUTOFF_MINUTE:02d} cutoff)")
+    elif ((0, 0) < config.ENTRY_PAUSE_START < config.ENTRY_PAUSE_END
+          and config.ENTRY_PAUSE_START <= hm < config.ENTRY_PAUSE_END):
+        entries = "PAUSED (lunch lull)"
+    else:
+        entries = "OPEN"
+
+    db_ok = True
+    try:
+        with get_db() as conn:
+            conn.execute("SELECT 1").fetchone()
+    except Exception:
+        db_ok = False
+
+    mkt, _ = market_status(now_ist)
+    return {
+        "trader": {"last_tick_age_s": age},
+        "feed": _feed_status(),
+        "db": db_ok,
+        "watchlist": {
+            "count": wl.get("count", len(symbols)),
+            "updated": updated,
+            "stale": stale,
+            "strategy": wl.get("strategy"),
+            "symbols": symbols,
+        },
+        "regime": {
+            "entries": entries,
+            "vix": vix,
+            "vix_note": vix_note,
+            "buys_today": buys,
+            "trade_cap": config.MAX_TRADES_PER_DAY or "unlimited",
+            "market": mkt,
+            "market_time": now_ist.strftime("%H:%M:%S"),
+        },
+        "log_lines": lines[-30:],
+    }
 
 
 @app.get("/reports_list")

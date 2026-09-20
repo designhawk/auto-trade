@@ -105,6 +105,15 @@ def test_sessions_and_today(tmpdb, monkeypatch):
     assert t["trades_total"] == 2 and t["total_pnl"] == 7.0
 
 
+def test_tui_panels_endpoint(tmpdb, monkeypatch):
+    _seed(monkeypatch)
+    t = api.tui_panels()
+    assert set(t) >= {"trader", "feed", "db", "watchlist", "regime", "log_lines"}
+    assert t["db"] is True and isinstance(t["log_lines"], list)
+    assert t["regime"]["entries"] and "market" in t["regime"]
+    assert isinstance(t["watchlist"]["symbols"], list)
+
+
 def test_mobile_page_and_reports(tmpdb):
     import fastapi
 
