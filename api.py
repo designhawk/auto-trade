@@ -22,11 +22,13 @@ Endpoints:
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from datetime import datetime, date
 from typing import List, Optional
 import sqlite3
 from contextlib import contextmanager
 import json
+import re
 
 from db import get_db, get_trades_for_date, get_signals_for_date, get_all_sessions, get_cash_flow
 import db as _dbmod
@@ -430,6 +432,154 @@ def get_today_summary():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+_REPORT_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.(html|md)$")
+
+MOBILE_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Auto Trade Live</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#0b1220;color:#e2e8f0;
+ font:15px/1.45 -apple-system,"Segoe UI",Roboto,sans-serif;padding:14px 14px 40px}
+h1{font-size:17px;margin:0}
+.sub{color:#8aa0b8;font-size:12px;margin-top:2px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.card{background:#141f33;border:1px solid #22314b;border-radius:12px;padding:10px 12px}
+.k{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#8aa0b8}
+.v{font-size:19px;font-weight:650;margin-top:2px}
+.s{font-size:11px;color:#8aa0b8;margin-top:2px}
+.pos{color:#4ade80}.neg{color:#f87171}.mut{color:#8aa0b8}
+h2{font-size:12.5px;text-transform:uppercase;letter-spacing:.05em;color:#8aa0b8;margin:20px 0 8px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;
+ background:#141f33;border:1px solid #22314b;border-radius:10px;padding:8px 10px;margin-bottom:6px}
+.sym{font-weight:650}
+.small{font-size:11.5px;color:#8aa0b8}
+.tag{font-size:10.5px;padding:1px 7px;border-radius:999px;border:1px solid #2c3d5c;color:#8aa0b8;white-space:nowrap}
+.tag.ok{border-color:#14532d;background:#052e16;color:#4ade80}
+.tag.no{border-color:#7f1d1d;background:#2a0a0a;color:#f87171}
+a{color:#7cb8ff;text-decoration:none}
+button{background:#1d2b45;border:1px solid #2c3d5c;color:#e2e8f0;border-radius:8px;
+ padding:6px 12px;font-size:13px}
+.foot{margin-top:22px;color:#5c718c;font-size:11px}
+</style></head><body>
+<h1>Auto Trade &middot; Live</h1>
+<div class="sub" id="when">loading&hellip;</div>
+<div class="grid" id="summary"></div>
+<h2>Positions</h2><div id="positions" class="small">&ndash;</div>
+<h2 id="sigH">Latest signals</h2><div id="signals" class="small">&ndash;</div>
+<h2 id="trdH">Latest trades</h2><div id="trades" class="small">&ndash;</div>
+<h2>Reports</h2><div id="reports" class="small">&ndash;</div>
+<div class="foot"><button onclick="refresh()">Refresh now</button>
+ &nbsp;auto-refresh: 30s</div>
+<script>
+var esc = function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
+var rs = function(v){return 'Rs.'+Number(v||0).toLocaleString('en-IN',{maximumFractionDigits:0});};
+var el = function(id){return document.getElementById(id);};
+var signCls = function(v){return v>0?'pos':(v<0?'neg':'mut');};
+function card(k,v,s,cls){return '<div class="card"><div class="k">'+esc(k)+
+  '</div><div class="v '+esc(cls||'')+'">'+esc(v)+'</div>'+
+  '<div class="s">'+esc(s||'')+'</div></div>';}
+function row(l,r){return '<div class="row">'+l+'<span>'+r+'</span></div>';}
+async function j(u){var r=await fetch(u,{cache:'no-store'});
+  if(!r.ok) throw new Error(u+' '+r.status); return r.json();}
+function hhmm(ts){return ts?String(ts).substr(11,5):'';}
+async function refresh(){
+  try{
+    var d = await Promise.all([j('/portfolio'),j('/positions'),j('/today'),j('/reports_list')]);
+    var pf=d[0], po=d[1], td=d[2], rp=d[3];
+    var sigDate=null, todayStr=new Date().toLocaleDateString('en-CA');
+    if(((td.signals||[]).length===0) && ((td.trades||[]).length===0) &&
+       pf.latest_session_date && pf.latest_session_date!==todayStr){
+      var extra = await Promise.all([
+        j('/signals?limit=10&date='+encodeURIComponent(pf.latest_session_date)),
+        j('/trades?limit=10&date='+encodeURIComponent(pf.latest_session_date))]);
+      td = {signals: extra[0].signals||[], trades: extra[1].trades||[]};
+      sigDate = pf.latest_session_date;
+    }
+    var pnl=(pf.current_value||0)-(pf.start_capital||0);
+    el('summary').innerHTML =
+      card('Value',rs(pf.current_value),(pf.live_prices?'live prices':''),'')+
+      card('P&L',rs(pnl),'vs start capital',signCls(pnl))+
+      card('Cash',rs(pf.cash),'', '')+
+      card('Positions',pf.num_positions,'today: '+(pf.today_trades||0)+' trades','');
+    var rows=(po.positions||[]).map(function(p){
+      var now=p.current_price||p.entry_price||0;
+      var pv=(now-(p.entry_price||0))*(p.qty||0);
+      return row('<span><span class="sym">'+esc(p.symbol)+'</span> '+
+        '<span class="small">x'+esc(p.qty)+' @ '+esc((p.entry_price||0).toFixed(2))+
+        ' &rarr; '+esc(now.toFixed(2))+'</span></span>',
+        '<span class="'+signCls(pv)+'">'+esc(rs(pv))+'</span>');
+    }).join('');
+    el('positions').innerHTML = rows || '<div class="row mut"><span>flat</span></div>';
+    var sigs=(td.signals||[]).slice(-5).reverse().map(function(s){
+      var tag=s.approved?'<span class="tag ok">OK</span>':'<span class="tag no">'+esc(s.rejection_reason||'rejected')+'</span>';
+      return row('<span><span class="sym">'+esc(s.symbol)+'</span> <span class="small">'+
+        esc(hhmm(s.timestamp))+' @ '+esc((s.entry_price||0).toFixed(2))+'</span></span>',tag);
+    }).join('');
+    el('signals').innerHTML = sigs || '<div class="row mut"><span>none</span></div>';
+    el('sigH').textContent = 'Latest signals'+(sigDate?(' \u2014 '+sigDate):'');
+    var trs=(td.trades||[]).slice(-5).reverse().map(function(t){
+      var pnl=t.pnl||0;
+      return row('<span><span class="sym">'+esc(t.side)+' '+esc(t.symbol)+'</span> '+
+        '<span class="small">x'+esc(t.qty)+' @ '+esc((t.price||0).toFixed(2))+
+        ' '+(t.exit_reason?esc(t.exit_reason):'')+'</span></span>',
+        '<span class="'+signCls(pnl)+'">'+(t.side==='SELL'?esc(rs(pnl)):'')+'</span>');
+    }).join('');
+    el('trades').innerHTML = trs || '<div class="row mut"><span>none</span></div>';
+    el('trdH').textContent = 'Latest trades'+(sigDate?(' \u2014 '+sigDate):'');
+    var files=(rp.files||[]).slice(0,6).map(function(f){
+      return '<div class="row"><a href="/reports/'+encodeURIComponent(f)+'">'+esc(f)+'</a></div>';
+    }).join('');
+    el('reports').innerHTML = files || '<div class="row mut"><span>none yet</span></div>';
+    el('when').textContent = 'updated '+new Date().toLocaleTimeString()+
+      (pf.latest_session_date?('  - last session '+pf.latest_session_date):'');
+  }catch(e){
+    el('when').textContent = 'trader/API unreachable - '+e.message;
+  }
+}
+refresh(); setInterval(refresh, 30000);
+</script></body></html>"""
+
+
+@app.get("/reports_list")
+def list_reports():
+    """List generated daily report files (newest first)."""
+    from paths import REPORT_DIR
+
+    try:
+        files = sorted(
+            (p.name for p in REPORT_DIR.glob("*") if _REPORT_NAME_RE.match(p.name)),
+            reverse=True,
+        )
+    except OSError:
+        files = []
+    return {"files": files}
+
+
+@app.get("/reports/{name}")
+def serve_report(name: str):
+    """Serve a daily report file (visual HTML report or Markdown card)."""
+    from paths import REPORT_DIR
+
+    if not _REPORT_NAME_RE.match(name):
+        raise HTTPException(status_code=404, detail="Report not found")
+    path = REPORT_DIR / name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Report not found")
+    text = path.read_text(encoding="utf-8")
+    if name.endswith(".html"):
+        return HTMLResponse(text)
+    return PlainTextResponse(text)
+
+
+@app.get("/mobile", response_class=HTMLResponse)
+def mobile_page():
+    """Phone-friendly live view (no CDNs; polls the local API every 30s)."""
+    return HTMLResponse(MOBILE_PAGE)
 
 
 if __name__ == "__main__":

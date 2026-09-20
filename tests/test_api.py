@@ -105,6 +105,33 @@ def test_sessions_and_today(tmpdb, monkeypatch):
     assert t["trades_total"] == 2 and t["total_pnl"] == 7.0
 
 
+def test_mobile_page_and_reports(tmpdb):
+    import fastapi
+
+    import paths
+
+    body = api.mobile_page().body.decode("utf-8")
+    assert "<!doctype html>" in body and "Auto Trade" in body
+    assert "jsdelivr" not in body  # mobile page must not depend on CDNs
+
+    assert api.list_reports()["files"] == []
+    paths.REPORT_DIR.mkdir(exist_ok=True)
+    (paths.REPORT_DIR / "2026-01-01.html").write_text("<html>hello</html>",
+                                                      encoding="utf-8")
+    (paths.REPORT_DIR / "2026-01-01.md").write_text("# hello", encoding="utf-8")
+    (paths.REPORT_DIR / "trade_secret.txt").write_text("no", encoding="utf-8")
+    assert api.list_reports()["files"] == ["2026-01-01.md", "2026-01-01.html"]
+
+    assert api.serve_report("2026-01-01.html").body == b"<html>hello</html>"
+    assert api.serve_report("2026-01-01.md").body == b"# hello"
+    for bad in ("../trading.db", "trade_secret.txt", "nope.html"):
+        try:
+            api.serve_report(bad)
+            raise AssertionError(f"served {bad}")
+        except fastapi.HTTPException:
+            pass
+
+
 def test_today_returns_latest_not_oldest(tmpdb, monkeypatch):
     """Signals tab froze once the day passed 10 signals: /today sliced the
     oldest 10 (ASC order) instead of the latest 10."""
