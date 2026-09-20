@@ -308,7 +308,11 @@ def get_portfolio_summary():
             }
         
         latest = sessions[0]
-        start_capital = latest.get('start_capital', config.INITIAL_CAPITAL)
+        # Cash baseline must be the account's starting capital: get_cash_flow
+        # is all-time, while a session row's start_capital is the capital at
+        # the last restart - mixing them double-counts pre-restart trades
+        # (2026-09-18 showed Rs.99,955 instead of the true Rs.1,00,029).
+        start_capital = config.INITIAL_CAPITAL
         
         # Get today's approved signals as open positions
         today = date.today().isoformat()

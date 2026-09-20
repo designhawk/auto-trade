@@ -82,6 +82,21 @@ def test_portfolio_math(tmpdb, monkeypatch):
     assert abs(pf["position_value"] - 600.0) < 1e-6
 
 
+def test_portfolio_cash_ignores_restart_baseline(tmpdb, monkeypatch):
+    """Session rows are per process run: cash must baseline on the account's
+    starting capital, not the last restart's start_capital (combining it with
+    all-time flows double-counts pre-restart trades)."""
+    _seed(monkeypatch)
+    db.insert_session({"date": "2000-01-02", "start_capital": 98_000,
+                       "end_capital": 98_000, "total_pnl": 0, "total_trades": 0,
+                       "winning_trades": 0, "losing_trades": 0,
+                       "max_drawdown_pct": 0, "sharpe_ratio": 0, "notes": "later"})
+    pf = api.get_portfolio_summary()
+    from config import config
+    assert pf["start_capital"] == config.INITIAL_CAPITAL
+    assert abs(pf["cash"] - 99407.33) < 1e-6, pf["cash"]
+
+
 def test_sessions_and_today(tmpdb, monkeypatch):
     _seed(monkeypatch)
     assert api.get_sessions()["count"] == 1
