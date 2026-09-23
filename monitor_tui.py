@@ -302,7 +302,7 @@ class MonitorApp(App):
                            ("#regime", "REGIME")):
             self.query_one(wid).border_title = title
         self.query_one("#positions", DataTable).add_columns(
-            "SYMBOL", "QTY", "ENTRY", "LTP", "CHG%", "P&L", "R")
+            "SYMBOL", "QTY", "ENTRY", "SL", "TP", "LTP", "CHG%", "P&L", "R")
         self.query_one("#signals", DataTable).add_columns(
             "TIME", "SYMBOL", "VERDICT", "DETAIL")
         self.query_one("#trades", DataTable).add_columns(
@@ -362,8 +362,12 @@ class MonitorApp(App):
             chg = ((ltp / entry - 1) * 100) if entry else 0
             pnl = (ltp - entry) * qty
             r = p.get("r_multiple")
+            sl = p.get("stop_loss")
+            tp = p.get("take_profit")
             table.add_row(
                 str(p.get("symbol", "?")), str(qty), f"{entry:.2f}",
+                f"{sl:.2f}" if isinstance(sl, (int, float)) else "-",
+                f"{tp:.2f}" if isinstance(tp, (int, float)) else "-",
                 f"{ltp:.2f}", f"{chg:+.2f}%",
                 Text(_pnl_plain(pnl), style=_pnl_style(pnl)),
                 f"{r:+.1f}" if isinstance(r, (int, float)) else "-")
