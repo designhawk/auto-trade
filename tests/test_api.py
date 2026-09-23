@@ -3,6 +3,7 @@ from datetime import datetime
 
 import db
 import api
+from config import config
 
 
 def _boom(*a, **k):
@@ -75,6 +76,8 @@ def test_positions_netted_fallback(tmpdb, monkeypatch):
 
 def test_portfolio_math(tmpdb, monkeypatch):
     _seed(monkeypatch)
+    # Pin capital so expectations don't depend on the user's .env
+    monkeypatch.setattr(config, "INITIAL_CAPITAL", 100_000.0)
     pf = api.get_portfolio_summary()
     assert pf["live_prices"] is False and pf["num_positions"] == 1
     # cash = 100000 - (1000+0.3+0+0.1) + (408-0.12-0.1-0.05)
@@ -87,12 +90,12 @@ def test_portfolio_cash_ignores_restart_baseline(tmpdb, monkeypatch):
     starting capital, not the last restart's start_capital (combining it with
     all-time flows double-counts pre-restart trades)."""
     _seed(monkeypatch)
+    monkeypatch.setattr(config, "INITIAL_CAPITAL", 100_000.0)
     db.insert_session({"date": "2000-01-02", "start_capital": 98_000,
                        "end_capital": 98_000, "total_pnl": 0, "total_trades": 0,
                        "winning_trades": 0, "losing_trades": 0,
                        "max_drawdown_pct": 0, "sharpe_ratio": 0, "notes": "later"})
     pf = api.get_portfolio_summary()
-    from config import config
     assert pf["start_capital"] == config.INITIAL_CAPITAL
     assert abs(pf["cash"] - 99407.33) < 1e-6, pf["cash"]
 
