@@ -72,6 +72,24 @@ def _trader(frames, capital=1_000_000):
     return t
 
 
+def test_save_feed_health_publishes(tmpdb):
+    import json
+
+    import paths
+
+    t = _trader({"X": _flat_5m(100.0)})
+    t.broker.feed_health = lambda: {"active": True, "symbols": 7,
+                                    "last_tick_age_s": 2.5}
+    t._save_feed_health()
+    h = json.loads((paths.LOG_DIR / "feed_health.json").read_text(encoding="utf-8"))
+    assert h["symbols"] == 7 and h["last_tick_age_s"] == 2.5
+    assert "updated" in h
+
+    # broker without feed_health (REST-only) must be a silent no-op
+    del t.broker.feed_health
+    t._save_feed_health()
+
+
 def test_entry_end_to_end(tmpdb, monkeypatch):
     monkeypatch.setattr(LiveTrader, "_ist_now",
                         staticmethod(lambda: datetime(2026, 1, 1, 10, 0)))

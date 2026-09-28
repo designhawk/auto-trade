@@ -40,6 +40,37 @@ def test_config_parse_and_ordering():
     assert config.STOP_ATR_MULT > 0 and config.RECENT_LOW_BARS >= 1
 
 
+def test_feed_tick_suffix(tmpdb, monkeypatch):
+    """Feed health file drives the '(tick Ns)' / '(STALE Ns)' suffix."""
+    import json
+    from datetime import datetime
+
+    import paths
+    from config import config as cfg
+    from monitor import _feed_tick_suffix
+
+    monkeypatch.setattr(cfg, "FEED_ENABLED", True)
+    assert _feed_tick_suffix() == ""  # no file yet
+
+    def write(age):
+        (paths.LOG_DIR / "feed_health.json").write_text(
+            json.dumps({"active": True, "symbols": 3, "last_tick_age_s": age,
+                        "updated": datetime.now().isoformat()}), encoding="utf-8")
+
+    write(3.2)
+    assert "tick 3s" in _feed_tick_suffix()
+    write(40)
+    assert "slowing" in _feed_tick_suffix()
+    write(200)
+    assert "STALE 200s" in _feed_tick_suffix()
+    write(None)
+    assert _feed_tick_suffix() == ""
+
+    monkeypatch.setattr(cfg, "FEED_ENABLED", False)
+    write(3.2)
+    assert _feed_tick_suffix() == ""
+
+
 def test_session_stop_is_tuple_compare():
     """After-hours restarts in a :00-:24 window (16:05) used to read as
     'market open' and keep running on_bar until the next :25."""

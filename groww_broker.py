@@ -327,6 +327,22 @@ class GrowwBroker(BrokerClient):
             print(f"[FEED] start failed, REST fallback: {e}")
             return False
 
+    def feed_health(self) -> dict:
+        """Streaming-feed liveness for dashboards (never raises).
+
+        last_tick_age_s is the age of the most recent streamed tick; None
+        when nothing has ticked yet (e.g., market closed).
+        """
+        try:
+            mgr = self._feed_mgr
+            if mgr is None:
+                return {"active": False, "symbols": 0, "last_tick_age_s": None}
+            age = round(time.time() - mgr.last_ok, 1) if mgr.last_ok else None
+            return {"active": bool(mgr.active), "symbols": mgr.symbol_count,
+                    "last_tick_age_s": age}
+        except Exception:
+            return {"active": False, "symbols": 0, "last_tick_age_s": None}
+
     def stop_feed(self) -> None:
         """Unsubscribe everything. Never raises."""
         try:

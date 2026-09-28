@@ -518,7 +518,9 @@ async function refresh(){
     var tickAge=(tu.trader||{}).last_tick_age_s;
     var tickTxt=ageTxt(tickAge);
     var tickCls=ageCls(tickAge);
-    el('sys').innerHTML = seg('Trader',tickTxt,tickCls)+seg('Feed',tu.feed||'?','')+
+    var fl=tu.feed_live||{};
+    var feedTxt=(tu.feed||'?')+(fl.last_tick_age_s!=null?(' \u00b7 tick '+Math.round(fl.last_tick_age_s)+'s'):'');
+    el('sys').innerHTML = seg('Trader',tickTxt,tickCls)+seg('Feed',feedTxt,'')+
       seg('DB',tu.db?'ok':'MISSING',tu.db?'pos':'neg')+
       seg('Watchlist',(wl.count||0)+' names'+(wl.stale?' (stale)':''),'')+
       seg('API','up','pos');
@@ -628,6 +630,14 @@ def tui_panels():
         wl = json.loads((LOG_DIR / "watchlist.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         wl = {}
+    feed_live = None
+    try:
+        from paths import LOG_DIR
+
+        feed_live = json.loads(
+            (LOG_DIR / "feed_health.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        feed_live = None
     from sectors import sector_of
 
     updated = str(wl.get("updated") or "")
@@ -662,6 +672,7 @@ def tui_panels():
     return {
         "trader": {"last_tick_age_s": age},
         "feed": _feed_status(),
+        "feed_live": feed_live,
         "db": db_ok,
         "watchlist": {
             "count": wl.get("count", len(symbols)),

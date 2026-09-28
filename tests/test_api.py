@@ -111,7 +111,8 @@ def test_sessions_and_today(tmpdb, monkeypatch):
 def test_tui_panels_endpoint(tmpdb, monkeypatch):
     _seed(monkeypatch)
     t = api.tui_panels()
-    assert set(t) >= {"trader", "feed", "db", "watchlist", "regime", "log_lines"}
+    assert set(t) >= {"trader", "feed", "db", "watchlist", "regime", "log_lines",
+                      "feed_live"}
     assert t["db"] is True and isinstance(t["log_lines"], list)
     assert t["regime"]["entries"] and "market" in t["regime"]
     assert isinstance(t["watchlist"]["symbols"], list)

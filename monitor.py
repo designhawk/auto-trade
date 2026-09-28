@@ -211,7 +211,37 @@ def _last_feed_line():
     return None
 
 
+def _feed_tick_suffix() -> str:
+    """Live tick age from feed_health.json: ' (tick Ns)' / ' (STALE Ns)'."""
+    try:
+        from config import config
+
+        if not config.FEED_ENABLED:
+            return ""
+        import json
+
+        from paths import LOG_DIR
+
+        h = json.loads((LOG_DIR / "feed_health.json").read_text(encoding="utf-8"))
+        age = h.get("last_tick_age_s")
+        if age is None:
+            return ""
+        age = float(age)
+        if age <= 15:
+            return f" (tick {age:.0f}s)"
+        if age <= 60:
+            return f" (tick {age:.0f}s, slowing)"
+        return f" (STALE {age:.0f}s)"
+    except Exception:
+        return ""
+
+
 def _feed_status() -> str:
+    """Feed state plus live tick age when the trader publishes it."""
+    return _feed_status_base() + _feed_tick_suffix()
+
+
+def _feed_status_base() -> str:
     """
     Human-readable feed state:
     disabled (config) / streaming N symbols / unavailable (REST) / REST only.

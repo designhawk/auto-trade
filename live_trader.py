@@ -329,6 +329,23 @@ class LiveTrader:
         self._refresh_vix()
         self._save_watchlist_state()
 
+    def _save_feed_health(self) -> None:
+        """Publish streaming-feed liveness for TUI/mobile (best-effort)."""
+        try:
+            import json
+
+            from paths import LOG_DIR
+
+            health = getattr(self.broker, "feed_health", None)
+            if health is None:
+                return
+            payload = health()
+            payload["updated"] = datetime.now().isoformat()
+            (LOG_DIR / "feed_health.json").write_text(
+                json.dumps(payload), encoding="utf-8")
+        except Exception:
+            pass
+
     def on_bar(self) -> None:
         """
         Every bar (config.TRADE_INTERVAL) during market hours.
@@ -643,6 +660,7 @@ class LiveTrader:
 
         # Log portfolio status
         self.log_portfolio_status()
+        self._save_feed_health()
 
     def get_portfolio_value(self) -> float:
         """Get current portfolio value."""

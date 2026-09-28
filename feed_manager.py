@@ -95,6 +95,11 @@ class FeedManager:
             self.last_ok = latest / 1000.0
         return prices, bool(prices)
 
+    @property
+    def symbol_count(self) -> int:
+        """Number of currently subscribed symbols."""
+        return len(self._subscribed)
+
     def is_fresh(self, max_age_s: float) -> bool:
         """True when ticks arrived recently enough to trust for decisions."""
         return self.active and (self._now() - self.last_ok) <= max_age_s

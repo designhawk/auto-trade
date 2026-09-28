@@ -123,6 +123,34 @@ def test_requests_routed_through_pooled_session():
         server.server_close()
 
 
+def test_feed_health_reports_state():
+    import time as _time
+
+    from feed_manager import FeedManager
+    from groww_broker import GrowwBroker
+
+    class _FakeFeed:
+        def subscribe_ltp(self, instruments):
+            pass
+
+        def unsubscribe_ltp(self, instruments):
+            pass
+
+        def get_ltp(self):
+            return {}
+
+    b = GrowwBroker()
+    assert b.feed_health() == {"active": False, "symbols": 0, "last_tick_age_s": None}
+
+    mgr = FeedManager(_FakeFeed())
+    assert mgr.resubscribe(["A", "B"], {"A": "1", "B": "2"})
+    mgr.last_ok = _time.time() - 3.0
+    b._feed_mgr = mgr
+    h = b.feed_health()
+    assert h["active"] is True and h["symbols"] == 2
+    assert 2.5 <= h["last_tick_age_s"] <= 4.5
+
+
 def test_rate_pacing_smooths_bursts(monkeypatch):
     """Selector scans 744 symbols; without pacing, pooled calls burst past
     Groww's per-second limit ("Rate limit has breached", seen live)."""
